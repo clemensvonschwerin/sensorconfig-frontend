@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+
+    <% include ../partials/head.ejs %>
+
+  </head>
+
+  <body id="page-top">
+
+    <% include ../partials/topbar.ejs %>
+
+    <div id="wrapper">
+
+		<% var activepage = "sensor_selection"; %>
+      <% include ../partials/sidebar.ejs %>
+
+      <div id="content-wrapper">
+
+        <div class="container-fluid">
+		
+		<form enctype='application/json' id="sensor-selection-form" method="post" action="/sensor_selection" novalidate>
+			<h3> Haltestellen: </h3>
+			<div class="panel-group" id="accordion">
+			<% for(i=0; i<Object.keys(peoplecounters).length; i++) {%> 
+			<% var busstop = Object.keys(peoplecounters)[i]; %>
+				<div class="accordion">
+					<div class="card">
+						<div class="card-header">
+							<h5 class="mb-0">
+								<a class="btn btn-link" data-toggle="collapse" data-parent="#accordion" href="#<%= busstop %>-fields" 
+								onclick="if($('#<%= busstop %>-angle').hasClass('fa-angle-right')) { $('#<%= busstop %>-angle').removeClass('fa-angle-right'); $('#<%= busstop %>-angle').addClass('fa-angle-down');  } else { $('#<%= busstop %>-angle').removeClass('fa-angle-down'); $('#<%= busstop %>-angle').addClass('fa-angle-right'); }">
+									<%= busstop %> &nbsp;&nbsp;<i id="<%= busstop %>-angle" class="fas fa-angle-right text-primary"></i>
+								</a>
+							</h5>
+						</div>
+					</div>
+				</div>
+				<div class="collapse in" id="<%= busstop %>-fields">
+					<div class="card-body border">
+						<ul>
+						<% for(j=0; j<Object.keys(peoplecounters[busstop]).length; j++) {%> 
+						<% var field = Object.keys(peoplecounters[busstop])[j]; %>
+							<li> 
+								<input class="form-check-input" 
+								type="checkbox" id="pc_<%= busstop %>_<%= field %>_cb" 
+								name="pc_<%= busstop %>_<%= field %>"
+								<% if(peoplecounters[busstop][field] == "on") { %>checked<% } %>
+								onclick="var elem = document.getElementById('pc_<%= busstop %>_<%= field %>_cb'); if('checked' in elem.attributes) { elem.removeAttribute('checked'); } else { elem.setAttribute('checked', 'true'); }" />
+								<label for="pc_<%= busstop %>_<%= field %>_cb" 
+								class="form-check-label  <% if(peoplecounters[busstop][field] == "on") { %>active<% } %>"> 
+								<%= field %>&nbsp;&nbsp;
+								</label>
+							</li>
+						<% } %>
+						</ul>
+					</div>
+				</div>
+			<% } %>
+			</div>
+			<button type="submit" class="btn btn-primary">Auswahl speichern</button>
+		</form>
+
+        <!-- /.container-fluid -->
+
+        <% include ../partials/footer.ejs %>
+
+      </div>
+      <!-- /.content-wrapper -->
+
+    </div>
+    <!-- /#wrapper -->
+
+    <% include ../partials/scripts.ejs %>
+
+  </body>
+
+</html>

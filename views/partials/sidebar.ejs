@@ -1,0 +1,33 @@
+<!-- Sidebar -->
+<ul class="sidebar navbar-nav">
+	<% if(activepage == "dashboard") {%>
+	<li class="nav-item active">
+	  <a class="nav-link" href="index">
+		<i class="fas fa-fw fa-tachometer-alt"></i>
+		<span>Dashboard</span>
+	  </a>
+	</li>
+	<%} else {%>
+	<li class="nav-item">
+	  <a class="nav-link" href="index">
+		<i class="fas fa-tachometer-alt"></i>
+		<span>Dashboard</span>
+	  </a>
+	</li>
+	<% } %>
+	<% if(activepage == "sensor_selection") {%>
+	<li class="nav-item active">
+	  <a class="nav-link" href="sensor_selection">
+		<i class="fas fa-fw fa-drafting-compass"></i>
+		<span>Sensor Selection</span>
+	  </a>
+	</li>
+	<%} else {%>
+	<li class="nav-item">
+	  <a class="nav-link" href="sensor_selection">
+		<i class="fas fa-drafting-compass"></i>
+		<span>Sensor Selection</span>
+	  </a>
+	</li>
+	<% } %>
+</ul>

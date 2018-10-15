@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+
+    <% include ../partials/head.ejs %>
+
+  </head>
+
+  <body id="page-top">
+	<h3><b>Create new Sensor</b></h3>
+	<br /><hr /><br />
+	<h4><u>Example</u></h4>
+	<span>{"ID": "hss_with_lora_hat_01", "desc":"testsensor at HS Ulm", "TTN":{"DEVADDR": "12AB34CD", "APPEUI": "12ABCD3456AFEABE"}, "type":"haltestellensensor", "version":"1"}</span>
+	<br /><hr /><br />
+	<h4><u>Your sensor:</u></h4>
+    <form enctype='application/json' id="new-sensor-form" method="post" action="/new_sensor" novalidate>
+		<textarea id="text" name="text" class="form-control" rows="10" cols="50" form="new-sensor-form"><%= text %></textarea>
+		<% if(message != "") {%>
+			<font color="#f00"><%= message %></font><br />
+		<% } %>
+		<input type="submit" class="btn btn-primary" value="Create sensor" />
+	</form>
+
+  </body>
+
+</html>
