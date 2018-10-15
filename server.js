@@ -24,6 +24,7 @@ app.use(body_parser.json());
 // }));
 
 app.use('/vendor', express.static(__dirname + '/vendor'));
+app.use('/img', express.static(__dirname + '/img'));
 // app.use('/css', express.static(__dirname + '/css'));
 // app.use('/js', express.static(__dirname + '/js'));
 // app.use('/scss', express.static(__dirname + '/scss'));
@@ -37,7 +38,34 @@ app.use(function (req, res, next) {
 });
 
 var indexfcn = function(req, res) {
-    res.render('pages/index')
+    var sensors = [];
+    var sensorpath = '/home/kuchen/sensors/users/';
+    var itempath;
+    items = fs.readdirSync(sensorpath);
+    for(var i=0; i<items.length; i++) {
+        if(items[i] != '.' && items[i] != '..') {
+            console.log("Checking user: " + items[i]);
+            sensoritems = fs.readdirSync(sensorpath + items[i]);
+            for(var j=0; j<sensoritems.length; j++) {
+                if(sensoritems[j] != '.' && sensoritems[j] != '..') {
+                    console.log("Checking sensor: " + sensoritems[j]);
+                    itempath = sensorpath + items[i] + "/" + sensoritems[j];
+                    jsonstr = fs.readFileSync(itempath);
+                    if(jsonstr == undefined) {
+                        console.log("Could not read " + itempath);
+                    } else {
+                        jsonobj = JSON.parse(jsonstr);
+                        if(!('desc' in jsonobj)) {
+                            jsonobj.desc = "";
+                        }
+                        sensors.push(jsonobj);
+                    }
+                }
+            }
+        }
+    }
+    console.log("Sensors: " + sensors.length);
+    res.render('pages/index', {sensors:sensors});
 };
 
 app.get('/', indexfcn);
@@ -84,6 +112,10 @@ app.post('/new_sensor', function(req, res) {
     } else {
         res.render('pages/index')
     }
+});
+
+app.get('/new_config', function(req, res) {
+    res.render('pages/new_configuration', {message:"", text:"{}"});
 });
 
 app.get('*', function(req, res) {
