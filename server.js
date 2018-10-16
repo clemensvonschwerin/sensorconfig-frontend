@@ -211,7 +211,18 @@ app.put('/new_config', function(req, res) {
     // Put request is used for requesting json description for type / version combination
     // -> expects res.send() call
     console.log("Got data: " + util.inspect(req.body));
-    res.send('Test');
+    var fullpath = cfgpath + req.body.type + "/" + req.body.version + ".json";
+    try {
+        if(fs.existsSync(fullpath)) {
+            jsonstr = fs.readFileSync(fullpath);
+            res.send(jsonstr);
+        } else {
+            res.send('');
+        }
+    } catch(err) {
+        console.log(err);
+        res.send('');
+    }
 });
 
 app.get('*', function(req, res) {
