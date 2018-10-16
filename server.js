@@ -147,19 +147,25 @@ var listcfgsfun = function() {
 };
 
 app.get('/new_config', function(req, res) {
-    var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json');
-    res.render('pages/new_configuration', {message:"", text:"{}", cfgs:listcfgsfun(), schema:configSchema});
+    var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json', {encoding:'utf-8'});
+    //var configSchemaPretty = JSON.stringify(JSON.parse(configSchema),null,2);
+    //configSchemaPretty = configSchema.replace(/\n/g, '<br />');
+    configSchemaPretty = configSchema;
+    res.render('pages/new_configuration', {message:"", text:"{}", cfgs:listcfgsfun(), schema:configSchemaPretty});
 });
 
 app.post('/new_config', function(req, res) {
     // Post request is used for saving / replacing -> expects res.render() call
     console.log("Got data: " + util.inspect(req.body));
     var cfg_valid = false;
-    var configSchema = '';
+    var configSchemaPretty = '';
     try {
         jsonobj = JSON.parse(req.body.text);
         var validator = new JSONSchemaValidator();
-        configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json');
+        var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json', {encoding:'utf-8'});
+        //configSchemaPretty = JSON.stringify(JSON.parse(configSchema),null,2);
+        //configSchemaPretty = configSchema.replace(/\n/g, '<br />');
+        configSchemaPretty = configSchema;
         var result = validator.validate(jsonobj, configSchema);
         if (result.valid) {
             //Custom validation steps
@@ -193,7 +199,7 @@ app.post('/new_config', function(req, res) {
         message = "Parsing sensor description failed with error message:\n" + err;
     }
     if(!cfg_valid) {
-        res.render('pages/new_configuration', {message: message, text:req.body.text, cfgs:listcfgsfun(), schema:configSchema});
+        res.render('pages/new_configuration', {message: message, text:req.body.text, cfgs:listcfgsfun(), schema:configSchemaPretty});
     } else {
         var cfgs = listcfgsfun();
         if(!(req.body.type in cfgs.objects)) {
@@ -204,7 +210,7 @@ app.post('/new_config', function(req, res) {
         }
         cfgs.type = req.body.type;
         cfgs.version = req.body.version;
-        res.render('pages/new_configuration', {message: "Configuration was saved successfully!", text:req.body.text, cfgs:cfgs, schema:configSchema});
+        res.render('pages/new_configuration', {message: "Configuration was saved successfully!", text:req.body.text, cfgs:cfgs, schema:configSchemaPretty});
     }
    
 });

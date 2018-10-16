@@ -56,6 +56,22 @@
 				xhr.send(JSON.stringify(params));
 			});
 		});
+		$(function() {
+			$('#collapse_schema').click(function() {
+				if($(this).text() == '+') {
+					$(this).text('-');
+				} else {
+					$(this).text('+');
+				}
+			});
+			$('#collapse_example').click(function() {
+				if($(this).text() == '+') {
+					$(this).text('-');
+				} else {
+					$(this).text('+');
+				}
+			});
+		});
 	</script>
 	
 	<style>
@@ -76,26 +92,47 @@
 	
 	<div class="container-fluid">
 		<h3><b>Create new Configuration</b></h3>
+		<div class="row">
+			<div class="col-sm-2">
+				<h4><u>Example</u></h4>
+			</div>
+			<div class="col-sm-1">
+				<a id="collapse_example" class="btn-sm btn-primary" data-toggle="collapse" href="#collapseExample" role="button" aria-expanded="false" aria-controls="collapseExample">+</a>
+			</div>
+		</div>
+		<div class="collapse" id="collapseExample">
+			<div class="card card-body">
+				<pre>
+{
+	"fields": [{ 
+		"type": "uint",
+		"name": "people",
+		"offset_bytes": 0,
+		"length_bytes": 1}],
+	"time": { 
+		"from":"network",
+		"format":"epoch_ms"},
+	"db": { "measurement": "peoplecounter"}
+}
+				</pre>
+			</div>
+		</div>
 		<br /><hr /><br />
-		<h4><u>Example</u></h4>
-		<span>
-		{
-			"fields": [{ 
-			"type": "uint",
-			"name": "people",
-			"offset_bytes": 0,
-			"length_bytes": 1}],
-			"time": { 
-				"from":"network",
-				"format":"epoch_ms"},
-			"db": { "measurement": "peoplecounter"}
-		}
-		</span>
-		<br /><hr /><br />
-		<h4><u>JSON Schema</u></h4>
-		<span>
-		<%= schema %>
-		</span>
+		<div class="row">
+			<div class="col-sm-2">
+				<h4><u>JSON Schema</u></h4>
+			</div>
+			<div class="col-sm-1">
+				<a id="collapse_schema" class="btn-sm btn-primary" data-toggle="collapse" href="#collapseSchema" role="button" aria-expanded="false" aria-controls="collapseSchema">+</a>
+			</div>
+		</div>
+		<div class="collapse" id="collapseSchema">
+			<div class="card card-body">
+				<pre>
+<%- schema %>
+				</pre>
+			</div>
+		</div>
 		<br /><hr /><br />
 		<h4><u>Your configuration:</u></h4>
 		<form enctype='application/json' id="new-config-form" method="post" action="/new_config" novalidate></form>
