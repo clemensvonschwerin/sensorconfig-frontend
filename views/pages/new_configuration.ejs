@@ -6,11 +6,46 @@
     <% include ../partials/head.ejs %>
 	
 	<script>
+		var cfgs = <%- JSON.stringify(cfgs) %>;
 		$(function() {
 			$('.dropdown-menu a').click(function() {
 				console.log($(this).attr('data-value'));
 				$(this).closest('.dropdown').find('input.dropdown-toggle')
 					.val($(this).attr('data-value'));
+			});
+		});
+		$(function() {
+			$('#type_items a').click(function() {
+				console.log('typeitem changed');
+				$('#version_items').innerHTML = '';
+				$('#version_text').val('');
+				if($(this).attr('data-value') != '') {
+					var versions = cfgs.objects[$(this).attr('data-value')];
+					for(var i=0; i<versions.length; i++) {
+						if(i==0) {
+							$('#version_text').val(versions[i]);
+						}
+						$('#version_items').innerHTML += '<li><a href="#" data-value="' + versions[i] +'" class="dropdown-item">' + versions[i] + '</a></li>\n';
+					}
+				}
+			});
+		});
+		$(function() {
+			$('#load_btn').click(function() {
+				var type = $('#type_text').val();
+				var version = $('#version_text').val();
+				var params = {'action': 'load', 'type': type, 'version': version};
+				var xhr = new XMLHttpRequest();
+				xhr.open('PUT', '/new_config');
+				xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+				xhr.onload = function() {
+					if(xhr.responseText != '') {
+						$('#text').val(xhr.responseText);
+					} else {
+						$('#message').innerHTML = 'No configuration file found for <u>Type:</u> ' + type +  ', <u>Version:</u> ' + version;
+					}
+				};
+				xhr.send(JSON.stringify(params));
 			});
 		});
 	</script>
@@ -35,17 +70,31 @@
 		<h3><b>Create new Configuration</b></h3>
 		<br /><hr /><br />
 		<h4><u>Example</u></h4>
-		<span>{"ID": "hss_with_lora_hat_01", "desc":"testsensor at HS Ulm", "TTN":{"DEVADDR": "12AB34CD", "APPEUI": "12ABCD3456AFEABE"}, "type":"haltestellensensor", "version":"1"}</span>
+		<span>
+		{
+			"fields": [{ 
+			"type": "uint",
+			"name": "people",
+			"offset_bytes": 0,
+			"length_bytes": 1}],
+			"time": { 
+				"from":"network",
+				"format":"epoch_ms"},
+			"db": { "measurement": "peoplecounter"}
+		}
+		</span>
 		<br /><hr /><br />
-		<h4><u>Your sensor:</u></h4>
+		<h4><u>Your configuration:</u></h4>
+		<form enctype='application/json' id="new-config-form" method="post" action="/new_config" novalidate></form>
 		<div class="row">
 			<div class="col-sm-3">
-				<div class="input-group dropdown">
-				  <input id="type_text" type="text" class="form-control dropdown-toggle" value="haltestellensensor">
-				  <ul class="dropdown-menu dropdown-menu-left pull-left">
-					<li><a href="#" data-value="haltestellensensor" class="dropdown-item">haltestellensensor</a></li>
-					<li><a href="#" data-value="wildwechselsensor" class="dropdown-item">wildwechselsensor</a></li>
-					<li><a href="#" data-value="xysensor" class="dropdown-item">xysensor</a></li>
+				<div class="input-group dropdown">	
+				  <input id="type_text" type="text" class="form-control dropdown-toggle" value="<%= cfgs.type %>" form="new-config-form" name="type" />
+				  <ul id="type_items" class="dropdown-menu dropdown-menu-left pull-left">
+					<% if(cfgs.type == "") { var typels = [""]; } else { var typels = Object.keys(cfgs.objects);} %>
+					<% for(var i=0; i<typels.length; i++) {  %>
+						<li><a href="#" data-value="<%= typels[i] %>" class="dropdown-item"><%= typels[i] %></a></li>
+					<% } %>
 				  </ul>
 				  <span role="button" class="input-group-addon dropdown-toggle pull-left border" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
 					<span class="caret"></span>
@@ -54,11 +103,15 @@
 			</div>
 			<div class="col-sm-3">
 				<div class="input-group dropdown">
-				  <input id="version_text" type="text" class="form-control dropdown-toggle" value="1">
-				  <ul class="dropdown-menu dropdown-menu-left pull-left">
-					<li><a href="#" data-value="1" class="dropdown-item">1</a></li>
-					<li><a href="#" data-value="2" class="dropdown-item">2</a></li>
-					<li><a href="#" data-value="3" class="dropdown-item">3</a></li>
+				  <input id="version_text" type="text" class="form-control dropdown-toggle" value="<%= cfgs.version %>" form="new-config-form" name="version" />
+				  <ul id="version_items" class="dropdown-menu dropdown-menu-left pull-left">
+					<% if(cfgs.version == "") { %>
+						<li><a href="#" data-value="" class="dropdown-item"></a></li>
+					<% } else { %>
+						<% for(var i=0; i<cfgs.objects[typels[0]].length; i++) { %>
+							<li><a href="#" data-value="<%= cfgs.objects[typels[0]][i] %>" class="dropdown-item"><%= cfgs.objects[typels[0]][i] %></a></li>
+						<% } //end-for %>
+					<% } //end-if-else %>
 				  </ul>
 				  <span role="button" class="input-group-addon dropdown-toggle pull-left border" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
 					<span class="caret"></span>
@@ -67,29 +120,29 @@
 			</div>
 			<div class="col-sm-3">
 				<input id="load_btn" class="btn" type="button" value="Load" />
-				<input id="save_btn" class="btn" type="button" value="Save or Replace" />
+				<input id="save_btn" class="btn" type="submit" value="Save or Replace" form="new-config-form" />
 			</div>
 		</div>	
 	
-		<form enctype='application/json' id="new-sensor-form" method="post" action="/new_sensor" novalidate>
+		<div class="row top-buffer">
+			<div class="col">
+				<textarea id="text" name="text" class="form-control" rows="10" cols="50" form="new-config-form"><%= text %></textarea>
+			</div>
+		</div>
+		<% if(message != "") {%>
 			<div class="row top-buffer">
 				<div class="col">
-					<textarea id="text" name="text" class="form-control" rows="10" cols="50" form="new-sensor-form"><%= text %></textarea>
+					<font id="message" color="#f00"><%= message %></font><br />
 				</div>
 			</div>
-			<% if(message != "") {%>
-				<div class="row top-buffer">
-					<div class="col">
-						<font color="#f00"><%= message %></font><br />
-					</div>
-				</div>
-			<% } %>
-			<div class="row top-buffer">
-				<div class="col">
-					<input type="submit" class="btn btn-primary" value="Create sensor" />
-				</div>
+		<% } %>
+		<div class="row top-buffer">
+			<div class="col">
+				<form action="/index">
+					<input type="submit" class="btn" value="Back" />
+				</form>
 			</div>
-		</form>
+		</div>
 	</div>
 
   </body>

@@ -13,6 +13,11 @@ const app = express();
 const hostname = '0.0.0.0';
 const port = 3033;
 
+const cfgpath = '/home/kuchen/sensors/configs/';
+const sensorpath = '/home/kuchen/sensors/users/';
+
+var JSONSchemaValidator = require('jsonschema').Validator;
+
 app.use(body_parser.urlencoded());
 app.use(body_parser.json());
 
@@ -25,6 +30,7 @@ app.use(body_parser.json());
 
 app.use('/vendor', express.static(__dirname + '/vendor'));
 app.use('/img', express.static(__dirname + '/img'));
+app.use('/schemas', express.static(__dirname + '/schemas'));
 // app.use('/css', express.static(__dirname + '/css'));
 // app.use('/js', express.static(__dirname + '/js'));
 // app.use('/scss', express.static(__dirname + '/scss'));
@@ -39,7 +45,6 @@ app.use(function (req, res, next) {
 
 var indexfcn = function(req, res) {
     var sensors = [];
-    var sensorpath = '/home/kuchen/sensors/users/';
     var itempath;
     items = fs.readdirSync(sensorpath);
     for(var i=0; i<items.length; i++) {
@@ -83,7 +88,7 @@ app.post('/new_sensor', function(req, res) {
     var user = "cschwerin";
     var sensor_valid = false;
     try {
-        jsonobj = JSON.parse(req.body.text)
+        jsonobj = JSON.parse(req.body.text);
         //validate
         console.log("" + ('ID' in jsonobj) + " " + ('TTN' in jsonobj) + " " + ('type' in jsonobj)+ " " + ('version' in jsonobj));
         if(!('ID' in jsonobj) || !('TTN' in jsonobj) || !('type' in jsonobj) || !('version' in jsonobj)) {
@@ -94,7 +99,7 @@ app.post('/new_sensor', function(req, res) {
             } else {
                 sensor_valid = true;
                 //TODO check if exists
-                fs.open('/home/kuchen/sensors/users/' + user + "/" + jsonobj.ID + ".json", 'w', (err, fd) => {
+                fs.open(sensorpath + user + "/" + jsonobj.ID + ".json", 'w', (err, fd) => {
                     if (err) throw err;
                     fs.write(fd, req.body.text, (err, written, buffer) => {
                         fs.close(fd, (err)=> {
@@ -114,8 +119,99 @@ app.post('/new_sensor', function(req, res) {
     }
 });
 
+var listcfgsfun = function() {
+    var cfgs = {};
+    var type = "";
+    var version = "";
+    typels = fs.readdirSync(cfgpath);
+    for(var i=0; i<typels.length; i++) {
+        if(typels[i] != '.' && typels[i] != '..') {
+            versionls = fs.readdirSync(cfgpath + typels[i]);
+            var versionnames = [];
+            for(var j=0; j<versionls.length; j++) {
+                if(versionls[j].endsWith('.json')) {
+                    versionnames.push(versionls[j].substring(0,versionls[j].indexOf('.json')));
+                }
+            }
+            cfgs[typels[i]] = versionnames;
+        }
+    }
+    if(Object.keys(cfgs).length > 0) {
+        type = Object.keys(cfgs)[0];
+        if(cfgs[type].length > 0) {
+            version = cfgs[type][0];
+        }
+    }
+    console.log("cfgs.objects=" + util.inspect(cfgs));
+    return {type:type, version:version, objects:cfgs};
+};
+
 app.get('/new_config', function(req, res) {
-    res.render('pages/new_configuration', {message:"", text:"{}"});
+    res.render('pages/new_configuration', {message:"", text:"{}", cfgs:listcfgsfun()});
+});
+
+app.post('/new_config', function(req, res) {
+    // Post request is used for saving / replacing -> expects res.render() call
+    console.log("Got data: " + util.inspect(req.body));
+    var cfg_valid = false;
+    try {
+        jsonobj = JSON.parse(req.body.text);
+        var validator = new JSONSchemaValidator();
+        var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json');
+        var result = validator.validate(jsonobj, configSchema);
+        if (result.valid) {
+            //Custom validation steps
+            if(jsonobj.time.from == "field" && !(jsonbj.time.field in jsonobj.fields.map(field => field.name))) {
+                message = "Error: time.field does not match any field name in fields!";
+            } else if (jsonobj.time.from == "field" && 
+                	!(('field' in jsonobj.time) && ('format' in jsonobj.time))) {
+                message = "Error: time.field and time.format are required when using time.from=\"field\"!";
+            } else {
+                message = "";
+                cfg_valid = true;
+                var typepath = cfgpath + req.body.type + "/";
+                if(!(fs.existsSync(typepath))) {
+                    fs.mkdirSync(typepath);
+                }
+
+                //Save config
+                fs.open(typepath + req.body.version + ".json", 'w', (err, fd) => {
+                    if (err) throw err;
+                    fs.write(fd, req.body.text, (err, written, buffer) => {
+                        fs.close(fd, (err)=> {
+                            if (err) throw err;
+                        });
+                    });
+                });
+            }
+        } else {
+            message = "Validating JSON schema failed with result:\n" + result.error;
+        }
+    } catch(err) {
+        message = "Parsing sensor description failed with error message:\n" + err;
+    }
+    if(!cfg_valid) {
+        res.render('pages/new_configuration', {message: message, text:req.body.text, cfgs:listcfgsfun()});
+    } else {
+        var cfgs = listcfgsfun();
+        if(!(req.body.type in cfgs.objects)) {
+            cfgs.objects[req.body.type] = [];
+        }
+        if(!(req.body.version in cfgs.objects[req.body.type])) {
+            cfgs.objects[req.body.type].push(req.body.version);
+        }
+        cfgs.type = req.body.type;
+        cfgs.version = req.body.version;
+        res.render('pages/new_configuration', {message: "Configuration was saved successfully!", text:req.body.text, cfgs:cfgs});
+    }
+   
+});
+
+app.put('/new_config', function(req, res) {
+    // Put request is used for requesting json description for type / version combination
+    // -> expects res.send() call
+    console.log("Got data: " + util.inspect(req.body));
+    res.send('Test');
 });
 
 app.get('*', function(req, res) {
