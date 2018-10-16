@@ -147,17 +147,19 @@ var listcfgsfun = function() {
 };
 
 app.get('/new_config', function(req, res) {
-    res.render('pages/new_configuration', {message:"", text:"{}", cfgs:listcfgsfun()});
+    var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json');
+    res.render('pages/new_configuration', {message:"", text:"{}", cfgs:listcfgsfun(), schema:configSchema});
 });
 
 app.post('/new_config', function(req, res) {
     // Post request is used for saving / replacing -> expects res.render() call
     console.log("Got data: " + util.inspect(req.body));
     var cfg_valid = false;
+    var configSchema = '';
     try {
         jsonobj = JSON.parse(req.body.text);
         var validator = new JSONSchemaValidator();
-        var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json');
+        configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json');
         var result = validator.validate(jsonobj, configSchema);
         if (result.valid) {
             //Custom validation steps
@@ -191,7 +193,7 @@ app.post('/new_config', function(req, res) {
         message = "Parsing sensor description failed with error message:\n" + err;
     }
     if(!cfg_valid) {
-        res.render('pages/new_configuration', {message: message, text:req.body.text, cfgs:listcfgsfun()});
+        res.render('pages/new_configuration', {message: message, text:req.body.text, cfgs:listcfgsfun(), schema:configSchema});
     } else {
         var cfgs = listcfgsfun();
         if(!(req.body.type in cfgs.objects)) {
@@ -202,7 +204,7 @@ app.post('/new_config', function(req, res) {
         }
         cfgs.type = req.body.type;
         cfgs.version = req.body.version;
-        res.render('pages/new_configuration', {message: "Configuration was saved successfully!", text:req.body.text, cfgs:cfgs});
+        res.render('pages/new_configuration', {message: "Configuration was saved successfully!", text:req.body.text, cfgs:cfgs, schema:configSchema});
     }
    
 });
