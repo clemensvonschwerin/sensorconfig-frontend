@@ -1,0 +1,46 @@
+{
+	"$schema": "http://json-schema.org/draft-06/schema#", 
+	"type": "object",
+	"properties": {
+		"ID": {
+			"type": "string",
+			"required": true
+		},
+		"desc": {
+			"type": "string"
+		},
+		"TTN": {
+			"type": "object",
+			"properties": {
+				"DEVADDR": {
+					"type": "string",
+					"minLength": 8,
+					"maxLength": 8,
+					"required": true
+				},
+				"APPEUI": {
+					"type": "string",
+					"minLength": 16,
+					"maxLength": 16,
+					"required": true
+				},
+				"URL": {
+					"type": "string"
+				}
+			},
+			"required": ["DEVADDR", "APPEUI"]
+		},
+		"type": {
+			"type": "string",
+			"required": true
+		},
+		"version": {
+			"type": "string",
+			"required": true
+		},
+		"tags": {
+			"type": "object"
+		}
+	},
+	"required": ["ID", "TTN", "type", "version"]
+}

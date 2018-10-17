@@ -78,7 +78,8 @@ app.get('/', indexfcn);
 app.get('/index', indexfcn);
 
 app.get('/new_sensor', function(req, res) {
-    res.render('pages/new_sensor', {message:"", text:"{}"});
+    var configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
+    res.render('pages/new_sensor', {message:"", text:"{}", schema:configSchema});
 });
 
 app.post('/new_sensor', function(req, res) {
@@ -87,16 +88,19 @@ app.post('/new_sensor', function(req, res) {
     //TODO usermanagement
     var user = "cschwerin";
     var sensor_valid = false;
+    var configSchema = '';
     try {
         jsonobj = JSON.parse(req.body.text);
+        var validator = new JSONSchemaValidator();
+        configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
+        configSchemaJson = JSON.parse(configSchema);
         //validate
-        console.log("" + ('ID' in jsonobj) + " " + ('TTN' in jsonobj) + " " + ('type' in jsonobj)+ " " + ('version' in jsonobj));
-        if(!('ID' in jsonobj) || !('TTN' in jsonobj) || !('type' in jsonobj) || !('version' in jsonobj)) {
-            message = "Error: Not all required fields found in base object!";
-        } else {
-            if(!('DEVADDR' in jsonobj.TTN) || !('APPEUI' in jsonobj.TTN)) {
-                message = "Error: Not all required fields found in TTN object!";
-            } else {
+        var result = validator.validate(jsonobj, configSchemaJson);
+        console.log(result);
+        if (result.errors.length == 0) {
+            //custom validation -> type / version must be a valid configuration file
+            cfgs = listcfgsfun();
+            if(jsonobj.type in cfgs.objects && jsonobj.version in cfgs.objects[jsonobj.type]) {
                 sensor_valid = true;
                 //TODO check if exists
                 fs.open(sensorpath + user + "/" + jsonobj.ID + ".json", 'w', (err, fd) => {
@@ -108,14 +112,16 @@ app.post('/new_sensor', function(req, res) {
                     });
                 });
             }
+        } else {
+            message = "Validating JSON schema failed with result:\n" + result.errors[0];
         }
     } catch(err) {
         message = "Parsing sensor description failed with error message:\n" + err;
     }
     if(!sensor_valid) {
-        res.render('pages/new_sensor', {message: message, text:req.body.text});
+        res.render('pages/new_sensor', {message: message, text:req.body.text, schema:configSchema});
     } else {
-        res.render('pages/index')
+        res.render('pages/new_sensor', {message: "Sensor creation successful!", text:req.body.text, schema:configSchema});
     }
 });
 
@@ -147,11 +153,8 @@ var listcfgsfun = function() {
 };
 
 app.get('/new_config', function(req, res) {
-    var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json', {encoding:'utf-8'});
-    //var configSchemaPretty = JSON.stringify(JSON.parse(configSchema),null,2);
-    //configSchemaPretty = configSchema.replace(/\n/g, '<br />');
-    configSchemaPretty = configSchema;
-    res.render('pages/new_configuration', {message:"", text:"{}", cfgs:listcfgsfun(), schema:configSchemaPretty});
+    var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json');
+    res.render('pages/new_configuration', {message:"", text:"{}", cfgs:listcfgsfun(), schema:configSchema});
 });
 
 app.post('/new_config', function(req, res) {
@@ -162,12 +165,10 @@ app.post('/new_config', function(req, res) {
     try {
         jsonobj = JSON.parse(req.body.text);
         var validator = new JSONSchemaValidator();
-        var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json', {encoding:'utf-8'});
-        //configSchemaPretty = JSON.stringify(JSON.parse(configSchema),null,2);
-        //configSchemaPretty = configSchema.replace(/\n/g, '<br />');
-        configSchemaPretty = configSchema;
-        var result = validator.validate(jsonobj, configSchema);
-        if (result.valid) {
+        var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json');
+        var configSchemaJson = JSON.parse(configSchema);
+        var result = validator.validate(jsonobj, configSchemaJson);
+        if (result.errors.length == 0) {
             //Custom validation steps
             if(jsonobj.time.from == "field" && !(jsonbj.time.field in jsonobj.fields.map(field => field.name))) {
                 message = "Error: time.field does not match any field name in fields!";
@@ -193,13 +194,13 @@ app.post('/new_config', function(req, res) {
                 });
             }
         } else {
-            message = "Validating JSON schema failed with result:\n" + result.error;
+            message = "Validating JSON schema failed with result:\n" + result.errors[0];
         }
     } catch(err) {
         message = "Parsing sensor description failed with error message:\n" + err;
     }
     if(!cfg_valid) {
-        res.render('pages/new_configuration', {message: message, text:req.body.text, cfgs:listcfgsfun(), schema:configSchemaPretty});
+        res.render('pages/new_configuration', {message: message, text:req.body.text, cfgs:listcfgsfun(), schema:configSchema});
     } else {
         var cfgs = listcfgsfun();
         if(!(req.body.type in cfgs.objects)) {
@@ -210,7 +211,7 @@ app.post('/new_config', function(req, res) {
         }
         cfgs.type = req.body.type;
         cfgs.version = req.body.version;
-        res.render('pages/new_configuration', {message: "Configuration was saved successfully!", text:req.body.text, cfgs:cfgs, schema:configSchemaPretty});
+        res.render('pages/new_configuration', {message: "Configuration was saved successfully!", text:req.body.text, cfgs:cfgs, schema:configSchema});
     }
    
 });

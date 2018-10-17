@@ -4,15 +4,69 @@
   <head>
 
     <% include ../partials/head.ejs %>
+	
+	<script>
+		$(function() {
+			$('#collapse_schema').click(function() {
+				if($(this).text() == '+') {
+					$(this).text('-');
+				} else {
+					$(this).text('+');
+				}
+			});
+			$('#collapse_example').click(function() {
+				if($(this).text() == '+') {
+					$(this).text('-');
+				} else {
+					$(this).text('+');
+				}
+			});
+		});
+	</script>
 
   </head>
 
   <body id="page-top">
 	<div class="container-fluid">
 		<h3><b>Create new Sensor</b></h3>
+		<div class="row">
+			<div class="col-sm-2">
+				<h4><u>Example</u></h4>
+			</div>
+			<div class="col-sm-1">
+				<a id="collapse_example" class="btn-sm btn-primary" data-toggle="collapse" href="#collapseExample" role="button" aria-expanded="false" aria-controls="collapseExample">+</a>
+			</div>
+		</div>
+		<div class="collapse" id="collapseExample">
+			<div class="card card-body">
+				<pre>
+{
+	"ID": "hss_with_lora_hat_01", 
+	"desc":"testsensor at HS Ulm", 
+	"TTN":{
+		"DEVADDR": "12AB34CD", 
+		"APPEUI": "12ABCD3456AFEABE"}, 
+	"type":"haltestellensensor", 
+	"version":"1"
+}</pre>
+			</div>
+		</div>
 		<br /><hr /><br />
-		<h4><u>Example</u></h4>
-		<span>{"ID": "hss_with_lora_hat_01", "desc":"testsensor at HS Ulm", "TTN":{"DEVADDR": "12AB34CD", "APPEUI": "12ABCD3456AFEABE"}, "type":"haltestellensensor", "version":"1"}</span>
+		<div class="row">
+			<div class="col-sm-2">
+				<h4><u>JSON Schema</u></h4>
+			</div>
+			<div class="col-sm-1">
+				<a id="collapse_schema" class="btn-sm btn-primary" data-toggle="collapse" href="#collapseSchema" role="button" aria-expanded="false" aria-controls="collapseSchema">+</a>
+			</div>
+		</div>
+		<div class="collapse" id="collapseSchema">
+			<div class="card card-body">
+				<pre>
+<%- schema %>
+				</pre>
+			</div>
+		</div>
 		<br /><hr /><br />
 		<h4><u>Your sensor:</u></h4>
 		<form enctype='application/json' id="new-sensor-form" method="post" action="/new_sensor" novalidate>
@@ -24,12 +78,17 @@
 					<% } %>
 				</div>
 			</div>
-			<div class="row top-buffer">
-				<div class="col">
-					<input type="submit" class="btn btn-primary" value="Create sensor" />
-				</div>
-			</div>
 		</form>
+		<div class="row top-buffer">
+			<div class="col-sm-1">
+				<form action="/index">
+					<input type="submit" class="btn" value="Back" />
+				</form>
+			</div>
+			<div class="col-sm-1">
+				<input type="submit" class="btn btn-primary" value="Create or Replace" form="new-sensor-form" />
+			</div>
+		</div>
 	</div>
 
   </body>
