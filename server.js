@@ -77,6 +77,54 @@ app.get('/', indexfcn);
 
 app.get('/index', indexfcn);
 
+app.post('/index', function(req,res) {
+    console.log("Got data: " + util.inspect(req.body));
+    sensorAction = Object.keys(req.body)[0];
+    if(sensorAction.endsWith("_delete_btn")) {
+        //delete action
+        console.log("Deleting: " + sensorAction.replace("_delete_btn", ""));
+        sensor = sensorAction.replace("_delete_btn", "");
+        items = fs.readdirSync(sensorpath);
+        for(var i=0; i<items.length; i++) {
+            if(items[i] != '.' && items[i] != '..') {
+                console.log("Checking user: " + items[i]);
+                sensoritems = fs.readdirSync(sensorpath + items[i]);
+                for(var j=0; j<sensoritems.length; j++) {
+                    if(sensoritems[j] == sensor + ".json") {
+                        console.log("Found sensor: " + sensoritems[j] + ", deleting!");
+                        itempath = sensorpath + items[i] + "/" + sensoritems[j];
+                        fs.unlinkSync(itempath);
+                    }
+                }
+            }
+        }
+        res.redirect('/index');
+    } else if(sensorAction.endsWith("_edit_btn")) {
+        var text="{}";
+        //edit action
+        sensor = sensorAction.replace("_edit_btn", "");
+        console.log("Searching for sensor: " + sensor);
+        items = fs.readdirSync(sensorpath);
+        for(var i=0; i<items.length; i++) {
+            if(items[i] != '.' && items[i] != '..') {
+                console.log("Checking user: " + items[i]);
+                sensoritems = fs.readdirSync(sensorpath + items[i]);
+                for(var j=0; j<sensoritems.length; j++) {
+                    if(sensoritems[j] == sensor + ".json") {
+                        console.log("Found sensor: " + sensoritems[j]);
+                        itempath = sensorpath + items[i] + "/" + sensoritems[j];
+                        text = fs.readFileSync(itempath);
+                    }
+                }
+            }
+        }
+        var configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
+        res.render("pages/new_sensor", {message:"", text:text, schema:configSchema});
+    } else {
+        console.log("Error: unkown sensor action!");
+    }
+});
+
 app.get('/new_sensor', function(req, res) {
     var configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
     res.render('pages/new_sensor', {message:"", text:"{}", schema:configSchema});
@@ -100,7 +148,9 @@ app.post('/new_sensor', function(req, res) {
         if (result.errors.length == 0) {
             //custom validation -> type / version must be a valid configuration file
             cfgs = listcfgsfun();
-            if(jsonobj.type in cfgs.objects && jsonobj.version in cfgs.objects[jsonobj.type]) {
+            console.log(jsonobj.type + ' in cfgs.objects ' + (jsonobj.type in cfgs.objects));
+            console.log(jsonobj.version + ' in ' + cfgs.objects[jsonobj.type] + ' ' + (cfgs.objects[jsonobj.type].indexOf(jsonobj.version) >= 0));
+            if(jsonobj.type in cfgs.objects && cfgs.objects[jsonobj.type].indexOf(jsonobj.version) >= 0) {
                 sensor_valid = true;
                 //TODO check if exists
                 fs.open(sensorpath + user + "/" + jsonobj.ID + ".json", 'w', (err, fd) => {
@@ -111,6 +161,8 @@ app.post('/new_sensor', function(req, res) {
                         });
                     });
                 });
+            } else {
+                message = "Type / version combination invalid!";
             }
         } else {
             message = "Validating JSON schema failed with result:\n" + result.errors[0];
