@@ -7,6 +7,7 @@ const icons = require('glyphicons');
 const body_parser = require('body-parser');
 const util = require('util');
 const session = require('client-sessions');
+const node_red_comm = require('./node-red-comm');
 
 const app = express();
 
@@ -77,6 +78,24 @@ app.get('/', indexfcn);
 
 app.get('/index', indexfcn);
 
+var findSensorPath = function(sensorname) {
+    items = fs.readdirSync(sensorpath);
+    for(var i=0; i<items.length; i++) {
+        if(items[i] != '.' && items[i] != '..') {
+            console.log("Checking user: " + items[i]);
+            sensoritems = fs.readdirSync(sensorpath + items[i]);
+            for(var j=0; j<sensoritems.length; j++) {
+                if(sensoritems[j] == sensorname + ".json") {
+                    console.log("Found sensor: " + sensoritems[j] + ", deleting!");
+                    itempath = sensorpath + items[i] + "/" + sensoritems[j];
+                    return itempath;
+                }
+            }
+        }
+    }
+    return undefined;
+};
+
 app.post('/index', function(req,res) {
     console.log("Got data: " + util.inspect(req.body));
     sensorAction = Object.keys(req.body)[0];
@@ -84,42 +103,35 @@ app.post('/index', function(req,res) {
         //delete action
         console.log("Deleting: " + sensorAction.replace("_delete_btn", ""));
         sensor = sensorAction.replace("_delete_btn", "");
-        items = fs.readdirSync(sensorpath);
-        for(var i=0; i<items.length; i++) {
-            if(items[i] != '.' && items[i] != '..') {
-                console.log("Checking user: " + items[i]);
-                sensoritems = fs.readdirSync(sensorpath + items[i]);
-                for(var j=0; j<sensoritems.length; j++) {
-                    if(sensoritems[j] == sensor + ".json") {
-                        console.log("Found sensor: " + sensoritems[j] + ", deleting!");
-                        itempath = sensorpath + items[i] + "/" + sensoritems[j];
-                        fs.unlinkSync(itempath);
-                    }
-                }
-            }
+        itempath = findSensorPath(sensor);
+        if(itempath != undefined) {
+            fs.unlinkSync(itempath);
+            //TODO else error
         }
         res.redirect('/index');
     } else if(sensorAction.endsWith("_edit_btn")) {
         var text="{}";
         //edit action
         sensor = sensorAction.replace("_edit_btn", "");
-        console.log("Searching for sensor: " + sensor);
-        items = fs.readdirSync(sensorpath);
-        for(var i=0; i<items.length; i++) {
-            if(items[i] != '.' && items[i] != '..') {
-                console.log("Checking user: " + items[i]);
-                sensoritems = fs.readdirSync(sensorpath + items[i]);
-                for(var j=0; j<sensoritems.length; j++) {
-                    if(sensoritems[j] == sensor + ".json") {
-                        console.log("Found sensor: " + sensoritems[j]);
-                        itempath = sensorpath + items[i] + "/" + sensoritems[j];
-                        text = fs.readFileSync(itempath);
-                    }
-                }
-            }
+        itempath = findSensorPath(sensor);
+        if(itempath != undefined) {
+            text = fs.readFileSync(itempath);
         }
         var configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
         res.render("pages/new_sensor", {message:"", text:text, schema:configSchema});
+    } else if(sensorAction.endsWith("_deploy_btn")) {
+        //edit action
+        sensor = sensorAction.replace("_deploy_btn", "");
+        itempath = findSensorPath(sensor);
+        if(itempath != undefined) { 
+            sensorobj = JSON.parse(fs.readFileSync(itempath));
+            var configitempath = cfgpath + '/' + sensorobj.type + '/' + sensorobj.version + '.json';
+            configobj = JSON.parse(fs.readFileSync(configitempath));
+            console.log('\n\n');
+            console.log(JSON.stringify(node_red_comm.flowObjectFromTemplate(sensorobj, configobj), null, 2));
+            console.log('\n\n');
+        }
+        res.redirect('/index');
     } else {
         console.log("Error: unkown sensor action!");
     }
@@ -228,22 +240,37 @@ app.post('/new_config', function(req, res) {
                 	!(('field' in jsonobj.time) && ('format' in jsonobj.time))) {
                 message = "Error: time.field and time.format are required when using time.from=\"field\"!";
             } else {
-                message = "";
-                cfg_valid = true;
-                var typepath = cfgpath + req.body.type + "/";
-                if(!(fs.existsSync(typepath))) {
-                    fs.mkdirSync(typepath);
+                dt_valid = true;
+                for(i=0; i<jsonobj.fields.length; i++) {
+                    if(jsonobj.fields[i].type in ['int', 'uint'] && !jsonobj.fields[i].length_bytes in [1,2,4]) {
+                        message = "Error: integer types can only be 1,2 or 4 bytes long!";
+                        dt_valid = false;
+                        break;
+                    } else if(jsonobj.fields[i].type == 'float' && !jsonobj.fields[i].length_bytes in [2,4,8]) {
+                        message = "Error: floating types can only be 2, 4 or 8 bytes long!";
+                        dt_valid = false;
+                        break;
+                    }
                 }
+                if(dt_valid) {
 
-                //Save config
-                fs.open(typepath + req.body.version + ".json", 'w', (err, fd) => {
-                    if (err) throw err;
-                    fs.write(fd, req.body.text, (err, written, buffer) => {
-                        fs.close(fd, (err)=> {
-                            if (err) throw err;
+                    message = "";
+                    cfg_valid = true;
+                    var typepath = cfgpath + req.body.type + "/";
+                    if(!(fs.existsSync(typepath))) {
+                        fs.mkdirSync(typepath);
+                    }
+
+                    //Save config
+                    fs.open(typepath + req.body.version + ".json", 'w', (err, fd) => {
+                        if (err) throw err;
+                        fs.write(fd, req.body.text, (err, written, buffer) => {
+                            fs.close(fd, (err)=> {
+                                if (err) throw err;
+                            });
                         });
                     });
-                });
+                }
             }
         } else {
             message = "Validating JSON schema failed with result:\n" + result.errors[0];

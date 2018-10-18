@@ -24,13 +24,14 @@
 	</script>
 	
 	<style>
-		table.fixed {table-layout:fixed; width:900px;}/*Setting the table width is important!*/
+		table.fixed {table-layout:fixed; width:1000px;}/*Setting the table width is important!*/
 		table.fixed td {overflow:hidden;}/*Hide text outside the cell.*/
 		table.fixed td:nth-of-type(1) {width:300px;}/*Setting the width of column 1.*/
 		table.fixed td:nth-of-type(2) {width:250px;}/*Setting the width of column 2.*/
 		table.fixed td:nth-of-type(3) {width:150px;}/*Setting the width of column 3.*/
 		table.fixed td:nth-of-type(4) {width:100px;}/*Setting the width of column 4.*/
 		table.fixed td:nth-of-type(5) {width:100px;}/*Setting the width of column 5.*/
+		table.fixed td:nth-of-type(6) {width:100px;}/*Setting the width of column 6.*/
 		button.fixed-80 {width:80px;}
 		button.delete {}
 	</style>
@@ -54,6 +55,7 @@
 				<td colspan="3"><h4><%= sensors[i].ID %></h4></td>
 				<td rowspan="2">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://www.thethingsnetwork.org/"><image src="/img/ttn-logo.png" alt="TTN Logo" width="80px" height="60px"></a></td>
 				<td><input name="<%= sensors[i].ID %>_edit_btn" type="submit" class="btn fixed-80" value="Edit" /></td>
+				<td><input name="<%= sensors[i].ID %>_deploy_btn" type="submit" class="btn fixed-80" value="Deploy" /></td>
 			</tr>
 			<tr>
 				<td><%= sensors[i].desc %></td>
@@ -63,6 +65,7 @@
 					<button id="<%= sensors[i].ID %>_delete_confirm_btn" class="btn fixed-80 delete" data-toggle="confirmation" onchange="deletefcn('#<%= sensors[i].ID %>_delete_btn');">Delete</button>
 					<input id="<%= sensors[i].ID %>_delete_btn" name="<%= sensors[i].ID %>_delete_btn" type="text" class="btn fixed-80" disabled="disabled" style="visibility: hidden; display: none;" />
 				</td>
+				<td>&nbsp;</td>
 			</tr>
 		</table>
 		<hr>

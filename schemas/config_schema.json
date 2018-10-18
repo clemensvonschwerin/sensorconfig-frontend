@@ -18,10 +18,9 @@
 						"type": "integer"
 					},
 					"length_bytes": {
-						"anyOf": [
-							{ "type": "integer", "minimum": 1, "maximum": 1 },
-							{ "type": "integer", "multipleOf": 2, "maximum": 8}
-						]
+						"type": "integer", 
+						"minimum": 1, 
+						"maximum": 51
 					}
 				},
 				"required": ["type", "name", "offset_bytes", "length_bytes"]
@@ -49,9 +48,6 @@
 			"properties": {
 				"measurement": {
 					"type": "string"
-				},
-				"tags": {
-					"type": "object"
 				}
 			},
 			"required": ["measurement"]

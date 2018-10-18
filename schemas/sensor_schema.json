@@ -12,23 +12,20 @@
 		"TTN": {
 			"type": "object",
 			"properties": {
-				"DEVADDR": {
-					"type": "string",
-					"minLength": 8,
-					"maxLength": 8,
-					"required": true
+				"AppId": {
+					"type": "string"
 				},
-				"APPEUI": {
-					"type": "string",
-					"minLength": 16,
-					"maxLength": 16,
-					"required": true
+				"DevId": {
+					"type": "string"
+				},
+				"AccessKey": {
+					"type": "string"
 				},
 				"URL": {
 					"type": "string"
 				}
 			},
-			"required": ["DEVADDR", "APPEUI"]
+			"required": ["AppId", "DevId", "AccessKey"]
 		},
 		"type": {
 			"type": "string",

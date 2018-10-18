@@ -1,0 +1,117 @@
+[
+    {
+        "id": "fd1e3596.deab18",
+        "type": "tab",
+        "label": "Flow 3",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "63f3e9a4.43a3b8",
+        "type": "ttn uplink",
+        "z": "fd1e3596.deab18",
+        "name": "Sensordaten",
+        "app": "77e81d55.32e6ec",
+        "dev_id": "testdevice_125",
+        "field": "",
+        "x": 148,
+        "y": 134,
+        "wires": [
+            [
+                "954d4c15.5c6238"
+            ]
+        ]
+    },
+    {
+        "id": "954d4c15.5c6238",
+        "type": "function",
+        "z": "fd1e3596.deab18",
+        "name": "Payload ",
+        "func": "var people = msg.payload_raw.readInt8(0);\ntry {\n    var newPayload = [{\n        people: people,\n        time: new Date().getTime() * 1000 * 1000\n    },{\n        busstop: \"Test-HS-Ulm\",\n        measuretime: \"network\"\n    }];\n    msg.payload = newPayload;\n    return msg;\n} catch (e) {\n    node.error('Could not parse people!', msg);\n}",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 388,
+        "y": 133,
+        "wires": [
+            [
+                "69a2401.64b044",
+                "5c982cfd.e849d4"
+            ]
+        ]
+    },
+    {
+        "id": "69a2401.64b044",
+        "type": "debug",
+        "z": "fd1e3596.deab18",
+        "name": "Data",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "x": 813,
+        "y": 283,
+        "wires": []
+    },
+    {
+        "id": "5c982cfd.e849d4",
+        "type": "influxdb out",
+        "z": "fd1e3596.deab18",
+        "influxdb": "a31f3f83.b8ac7",
+        "name": "",
+        "measurement": "peoplecounter",
+        "precision": "",
+        "retentionPolicy": "",
+        "x": 925.1666717529297,
+        "y": 131.66666412353516,
+        "wires": []
+    },
+    {
+        "id": "574d8232.30c2f4",
+        "type": "catch",
+        "z": "fd1e3596.deab18",
+        "name": "",
+        "scope": null,
+        "x": 201.6666717529297,
+        "y": 537.6666641235352,
+        "wires": [
+            [
+                "16708c8.a5d24f4"
+            ]
+        ]
+    },
+    {
+        "id": "16708c8.a5d24f4",
+        "type": "debug",
+        "z": "fd1e3596.deab18",
+        "name": "Error",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "x": 532.6666717529297,
+        "y": 539.6666641235352,
+        "wires": []
+    },
+    {
+        "id": "77e81d55.32e6ec",
+        "type": "ttn app",
+        "z": "",
+        "appId": "peoplecounter_busstop_ulm_0001",
+        "accessKey": "",
+        "discovery": "discovery.thethingsnetwork.org:1900"
+    },
+    {
+        "id": "a31f3f83.b8ac7",
+        "type": "influxdb",
+        "z": "",
+        "hostname": "127.0.0.1",
+        "port": "8086",
+        "protocol": "http",
+        "database": "loradata",
+        "name": "",
+        "usetls": false,
+        "tls": ""
+    }
+]
