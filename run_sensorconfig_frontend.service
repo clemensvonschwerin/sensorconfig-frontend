@@ -1,0 +1,19 @@
+[Unit]
+Description=Sensorconfig frontend based on Node.js
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+WorkingDirectory=/home/kuchen/sensorconfig-frontend/
+ExecStart=/usr/bin/node /home/kuchen/sensorconfig-frontend/server.js
+Restart=always
+# Restart service after 10 seconds if node service crashes
+RestartSec=10
+# Output to syslog
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=sensorconfig-frontend
+Environment=NODE_ENV=production PORT=3033
+
+[Install]
+WantedBy=multi-user.target
