@@ -210,7 +210,7 @@ var updateFlowFn = function(flowInfo, flowObject, success_callback) {
     req.end();
 };
 
-exports.deployFlowObject = function(flowObject, success_callback) {
+var runOnExistingFlows = function(callback) {
     //Get existing flows
     const listFlowsOptions = {
         host: '127.0.0.1',
@@ -239,30 +239,7 @@ exports.deployFlowObject = function(flowObject, success_callback) {
             });
             res.on('end', () => {
                 var flows = JSON.parse(responseData);
-                //console.log("Existing flows: " + JSON.stringify(flows, null, 2));
-                var flowInfo = null;
-                for(i=0; i<flowObject.length; i++) {
-                    if(flowObject[i].type == 'tab') {
-                        flowInfo = {label: flowObject[i].label, id: flowObject[i].id, existing: false};
-                        flowObject.splice(i,1);
-                        break;
-                    }
-                }
-                if(!flowInfo) {
-                    console.log('Error: could not extract flow info, malformed flow object!');
-                    success_callback(false);
-                    return;
-                }
-                for(i=0; i<flows.length; i++) {
-                    if(flows[i].type == 'tab' && flows[i].label == flowInfo.label) {
-                        //Found active flow for current flow object -> replace
-                        flowInfo.id = flows[i].id;
-                        flowInfo.existing = true;
-                        console.log("Found id: " + flowInfo.id);
-                        break;
-                    }
-                }
-                updateFlowFn(flowInfo, flowObject, success_callback);
+                callback(flows);
             });
         } else {
             console.log('Error: unexpected status code!');
@@ -271,3 +248,83 @@ exports.deployFlowObject = function(flowObject, success_callback) {
     });
     listFlowsReq.end();
 }
+
+exports.deployFlowObject = function(flowObject, success_callback) {
+    
+    var flowInfo = null;
+    for(i=0; i<flowObject.length; i++) {
+        if(flowObject[i].type == 'tab') {
+            flowInfo = {label: flowObject[i].label, id: flowObject[i].id, existing: false};
+            flowObject.splice(i,1);
+            break;
+        }
+    }
+    if(!flowInfo) {
+        console.log('Error: could not extract flow info, malformed flow object!');
+        success_callback(false);
+        return;
+    }
+
+    runOnExistingFlows((flows) => {
+        for(i=0; i<flows.length; i++) {
+            if(flows[i].type == 'tab' && flows[i].label == flowInfo.label) {
+                //Found active flow for current flow object -> replace
+                flowInfo.id = flows[i].id;
+                flowInfo.existing = true;
+                console.log("Found id: " + flowInfo.id);
+                break;
+            }
+        }
+        updateFlowFn(flowInfo, flowObject, success_callback);
+    });
+}
+
+exports.deleteFlowForSensorId = function(sensorid, success_callback) {
+    runOnExistingFlows((flows) => {
+        var id = null;
+        for(i=0; i<flows.length; i++) {
+            if(flows[i].type == 'tab' && flows[i].label == sensorid) {
+                //Found active flow for current flow object -> replace
+                id = flows[i].id;
+                console.log("Found id " +  id + " for " + sensorid);
+                break;
+            }
+        }
+        if(id) {
+            const options = {
+                host: '127.0.0.1', 
+                port: 1880, 
+                method: 'DELETE',
+                path: '/flow/' + id,
+            }
+            const req = http.request(options, (res) => {
+                console.log("Deleting flow response status code: " + res.statusCode);
+                if(res.statusCode == 400) {
+                    var responseData = Buffer.alloc(0);     
+                    res.on('data', (chunk) => {
+                        responseData = Buffer.concat([responseData, chunk]);
+                    });
+                    res.on('end', () => {
+                        console.log('Error response: ' + responseData.toString());
+                    });
+                    success_callback(false);
+                } else if(res.statusCode == 401) {
+                    console.log('Error: not authorized!');
+                    success_callback(false);
+                } else if(res.statusCode == 404) {
+                    console.log('Error: flow not found!');
+                    success_callback(false);
+                } else if(res.statusCode == 204 || res.statusCode == 200) {
+                    success_callback(true);
+                } else {
+                    console.log('Error: unexpected status code!');
+                    success_callback(false);
+                }    
+            });
+            req.end();
+        } else {
+            console.log("No deployed flow for " + sensorid + " found, nothing to do!");
+            success_callback(true);
+        }
+    });
+};

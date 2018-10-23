@@ -113,9 +113,14 @@ app.post('/index', function(req,res) {
         itempath = findSensorPath(sensor);
         if(itempath != undefined) {
             fs.unlinkSync(itempath);
-            //TODO else error
+            node_red_comm.deleteFlowForSensorId(sensor, (success) => {
+                alertType = success ? 'success':'failure';
+                alertText = '<strong>' + sensor + (success ? ' has been deleted successfully!': ' has dependent flows that could not be deleted. Please do that manually in Node-RED at port 1880!') +'</strong>';
+                res.render('pages/index', {sensors:getAllSensorsFcn(), alertType: alertType, alertText: alertText});
+            });
+        } else {
+            res.render('pages/index', {sensors:getAllSensorsFcn(), alertType: 'failure', alertText: 'Sensor was not found on the system!'});
         }
-        res.redirect('/index');
     } else if(sensorAction.endsWith("_edit_btn")) {
         var text="{}";
         //edit action
