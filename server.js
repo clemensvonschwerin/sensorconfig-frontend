@@ -64,6 +64,9 @@ var getAllSensorsFcn = function() {
                         if(!('desc' in jsonobj)) {
                             jsonobj.desc = "";
                         }
+                        if(!('URL' in jsonobj.TTN)) {
+                            jsonobj.TTN.URL = 'https://console.thethingsnetwork.org/applications/' + jsonobj.TTN.AppId + '/devices/' + jsonobj.TTN.DevId;
+                        }
                         sensors.push(jsonobj);
                     }
                 }

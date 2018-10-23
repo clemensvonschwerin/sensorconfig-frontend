@@ -53,7 +53,11 @@
 			</tr>
 			<tr>
 				<td colspan="3"><h4><%= sensors[i].ID %></h4></td>
-				<td rowspan="2">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://www.thethingsnetwork.org/"><image src="/img/ttn-logo.png" alt="TTN Logo" width="80px" height="60px"></a></td>
+				<td rowspan="2">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+					<a href="<% if(sensors[i].TTN.URL != undefined) { %> <%= sensors[i].TTN.URL %> <% } else { %> https://www.thethingsnetwork.org/ <% } %>" target="_blank">
+						<image src="/img/ttn-logo.png" alt="TTN Logo" width="80px" height="60px">
+					</a>
+				</td>
 				<td><input name="<%= sensors[i].ID %>_edit_btn" type="submit" class="btn fixed-80" value="Edit" /></td>
 				<td><input name="<%= sensors[i].ID %>_deploy_btn" type="submit" class="btn fixed-80" value="Deploy" /></td>
 			</tr>
