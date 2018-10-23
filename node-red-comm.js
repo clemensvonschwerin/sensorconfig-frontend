@@ -12,8 +12,8 @@ var incidfn = function(target, flownumber) {
     if(typeof(target) == 'string') {
         console.log('Length: ' + target.length + ', pointpos: ' + target.indexOf("."));
     }*/
-    if(typeof(target) == "string" && target.length == 15 
-        && target.indexOf(".") == 8) {
+    if(typeof(target) == "string" && (target.length == 14 || target.length == 15)
+        && (target.indexOf(".")  == 7 ||  target.indexOf(".")  == 8)) {
         console.log('Incrementing id ' + target);
         var num = parseInt(target.substring(target.indexOf(".") + 1), 16);
         num += flownumber;
@@ -133,6 +133,7 @@ exports.flowObjectFromTemplate = function(sensorobj, configobj) {
     var template = JSON.parse(fs.readFileSync(templatepath));
     var flownumber = parseInt(fs.readFileSync(cfgpath)) + 1;
     var target = incidfn(template, flownumber);
+    console.log("Template ids were incremented by " + flownumber);
 
     for (var key in target){
         if (target.hasOwnProperty(key)) {
@@ -155,4 +156,118 @@ exports.flowObjectFromTemplate = function(sensorobj, configobj) {
     fs.writeFileSync(cfgpath, flownumber.toString());
 
     return target;
+}
+
+var updateFlowFn = function(flowInfo, flowObject, success_callback) {
+    var entrypoint = '/flow';
+    var method = 'POST';
+    var requestBody = {id: flowInfo.id, label: flowInfo.label};
+    if(flowInfo.existing) {
+        console.log("Using method PUT to update flow with id: " + flowInfo.id);
+        for(i=0; i<flowObject.length; i++) {
+            if(flowObject.z != '') {
+                flowObject[i].z = flowInfo.id;
+            }
+        }
+        entrypoint += '/' + flowInfo.id;
+        method = 'PUT';
+    }
+    requestBody.nodes = flowObject;
+    const postData = JSON.stringify(requestBody);
+    const options = {
+        host: '127.0.0.1', 
+        port: 1880, 
+        method: method,
+        path: entrypoint,
+        headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData)
+        }
+    }
+    const req = http.request(options, (res) => {
+        console.log("Deploying flow response status code: " + res.statusCode);
+        if(res.statusCode == 400) {
+            var responseData = Buffer.alloc(0);     
+            res.on('data', (chunk) => {
+                responseData = Buffer.concat([responseData, chunk]);
+            });
+            res.on('end', () => {
+                console.log('Error response: ' + responseData.toString());
+            });
+            success_callback(false);
+        } else if(res.statusCode == 401) {
+            console.log('Error: not authorized!');
+            success_callback(false);
+        } else if(res.statusCode == 204 || res.statusCode == 200) {
+            success_callback(true);
+        } else {
+            console.log('Error: unexpected status code!');
+            success_callback(false);
+        }    
+    });
+
+    req.write(postData);
+    req.end();
+};
+
+exports.deployFlowObject = function(flowObject, success_callback) {
+    //Get existing flows
+    const listFlowsOptions = {
+        host: '127.0.0.1',
+        port: 1880,
+        method: 'GET',
+        path: '/flows',
+        headers: {
+            'Content-Type': 'application/json',
+            'Connection': 'keep-alive'
+        }
+    }
+    const listFlowsReq = http.request(listFlowsOptions, (res) => {
+        console.log('List flows status code: ' + res.statusCode);
+        console.log('List flows headers: ' + JSON.stringify(res.headers));
+        if(res.statusCode == 401) {
+            console.log('Error: Not authorized!');
+            success_callback(false);
+        } else if(res.statusCode == 400) {
+            console.log('Error: invalid API version!');
+            success_callback(false);
+        } else if(res.statusCode == 200) {
+            //success
+            var responseData = Buffer.alloc(0);     
+            res.on('data', (chunk) => {
+                responseData = Buffer.concat([responseData, chunk]);
+            });
+            res.on('end', () => {
+                var flows = JSON.parse(responseData);
+                //console.log("Existing flows: " + JSON.stringify(flows, null, 2));
+                var flowInfo = null;
+                for(i=0; i<flowObject.length; i++) {
+                    if(flowObject[i].type == 'tab') {
+                        flowInfo = {label: flowObject[i].label, id: flowObject[i].id, existing: false};
+                        flowObject.splice(i,1);
+                        break;
+                    }
+                }
+                if(!flowInfo) {
+                    console.log('Error: could not extract flow info, malformed flow object!');
+                    success_callback(false);
+                    return;
+                }
+                for(i=0; i<flows.length; i++) {
+                    if(flows[i].type == 'tab' && flows[i].label == flowInfo.label) {
+                        //Found active flow for current flow object -> replace
+                        flowInfo.id = flows[i].id;
+                        flowInfo.existing = true;
+                        console.log("Found id: " + flowInfo.id);
+                        break;
+                    }
+                }
+                updateFlowFn(flowInfo, flowObject, success_callback);
+            });
+        } else {
+            console.log('Error: unexpected status code!');
+            success_callback(false);
+        }      
+    });
+    listFlowsReq.end();
 }

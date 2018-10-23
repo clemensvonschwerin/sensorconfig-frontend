@@ -88,6 +88,15 @@
 		</div>
 		<div class="col-sm-10">&nbsp;</div>
 	  </div>
+	  <% if(alertType == "success") { %>
+	  <div id="success_alert" class="alert alert-success" role="alert">
+		<%- alertText %>
+	  </div>
+	  <% } else if(alertType == "failure") { %>
+	  <div id="error_alert" class="alert alert-danger" role="alert">
+		<%- alertText %>
+	  </div>
+	  <% } //end-if %>
   </div>
     
   </body>

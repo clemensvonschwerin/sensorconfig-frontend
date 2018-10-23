@@ -44,7 +44,7 @@ app.use(function (req, res, next) {
     next();
 });
 
-var indexfcn = function(req, res) {
+var getAllSensorsFcn = function() {
     var sensors = [];
     var itempath;
     items = fs.readdirSync(sensorpath);
@@ -71,7 +71,11 @@ var indexfcn = function(req, res) {
         }
     }
     console.log("Sensors: " + sensors.length);
-    res.render('pages/index', {sensors:sensors});
+    return sensors;
+}
+
+var indexfcn = function(req, res) {
+    res.render('pages/index', {sensors:getAllSensorsFcn(), alertType:'', alertText:''});
 };
 
 app.get('/', indexfcn);
@@ -127,11 +131,17 @@ app.post('/index', function(req,res) {
             sensorobj = JSON.parse(fs.readFileSync(itempath));
             var configitempath = cfgpath + '/' + sensorobj.type + '/' + sensorobj.version + '.json';
             configobj = JSON.parse(fs.readFileSync(configitempath));
+            flowObject = node_red_comm.flowObjectFromTemplate(sensorobj, configobj);
             console.log('\n\n');
-            console.log(JSON.stringify(node_red_comm.flowObjectFromTemplate(sensorobj, configobj), null, 2));
+            console.log(JSON.stringify(flowObject, null, 2));
             console.log('\n\n');
+            node_red_comm.deployFlowObject(flowObject, (success) => {
+                alertType = success ? 'success':'failure';
+                alertText = '<strong>' + sensor + (success ? ' has been deployed successfully!': ' could not be deployed!') +'</strong>';
+                res.render('pages/index', {sensors:getAllSensorsFcn(), alertType: alertType, alertText: alertText});
+            });
         }
-        res.redirect('/index');
+        //res.redirect('/index');
     } else {
         console.log("Error: unkown sensor action!");
     }
