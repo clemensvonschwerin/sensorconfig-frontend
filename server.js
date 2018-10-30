@@ -155,6 +155,10 @@ app.post('/index', function(req,res) {
     }
 });
 
+app.get('/login', function(req,res) {
+    res.render('pages/login');
+});
+
 app.get('/new_sensor', function(req, res) {
     var configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
     res.render('pages/new_sensor', {message:"", text:"{}", schema:configSchema});
