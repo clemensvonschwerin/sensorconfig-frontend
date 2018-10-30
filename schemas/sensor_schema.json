@@ -35,9 +35,14 @@
 			"type": "string",
 			"required": true
 		},
+		"cryptokey": {
+			"type": "string",
+			"minLength": 16,
+			"maxLength": 16
+		},
 		"tags": {
 			"type": "object"
 		}
 	},
-	"required": ["ID", "TTN", "type", "version"]
+	"required": ["ID", "TTN", "cryptokey", "type", "version"]
 }

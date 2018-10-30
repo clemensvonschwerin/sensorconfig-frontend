@@ -69,7 +69,9 @@
 					<button id="<%= sensors[i].ID %>_delete_confirm_btn" class="btn fixed-80 delete" data-toggle="confirmation" onchange="deletefcn('#<%= sensors[i].ID %>_delete_btn');">Delete</button>
 					<input id="<%= sensors[i].ID %>_delete_btn" name="<%= sensors[i].ID %>_delete_btn" type="text" class="btn fixed-80" disabled="disabled" style="visibility: hidden; display: none;" />
 				</td>
-				<td>&nbsp;</td>
+				<td>
+					<input name="<%= sensors[i].ID %>_send_message_btn" class="btn fixed-80" type="submit" value="Send downlink message" />
+				</td>
 			</tr>
 		</table>
 		<hr>
@@ -80,17 +82,17 @@
 	</form>
 	  
 	  <div class="row top-buffer">
-		<div class="col-sm-1">
+		<div class="col-sm-2">
 		  <form action="/new_sensor">
 			<input id="new_sensor_btn" class="btn btn-primary" type="submit" value="New Sensor" />
 		  </form>
 		</div>
-		<div class="col-sm-1">
+		<div class="col-sm-2">
 		  <form action="/new_config">
 			<input id="new_config_btn" class="btn btn-primary" type="submit" value="New Configuration" />
 		  </form>
 		</div>
-		<div class="col-sm-10">&nbsp;</div>
+		<div class="col-sm-8">&nbsp;</div>
 	  </div>
 	  <% if(alertType == "success") { %>
 	  <div id="success_alert" class="alert alert-success" role="alert">
