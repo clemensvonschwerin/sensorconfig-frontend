@@ -8,6 +8,7 @@ const body_parser = require('body-parser');
 const util = require('util');
 const session = require('client-sessions');
 const node_red_comm = require('./node-red-comm');
+const MongoClient = require('mongodb').MongoClient;
 
 const app = express();
 
@@ -16,6 +17,14 @@ const port = 3033;
 
 const cfgpath = '/home/kuchen/sensors/configs/';
 const sensorpath = '/home/kuchen/sensors/users/';
+
+const dburl = 'mongodb://127.0.0.1:27017/sensorconfigdb';
+var db;
+try {
+    db = await MongoClient.connect(dburl);
+} catch(e) {
+    console.log("Could not connect to MongoDB at " + dburl + ", cause: " + e);
+}
 
 var JSONSchemaValidator = require('jsonschema').Validator;
 
@@ -44,41 +53,13 @@ app.use(function (req, res, next) {
     next();
 });
 
-var getAllSensorsFcn = function() {
-    var sensors = [];
-    var itempath;
-    items = fs.readdirSync(sensorpath);
-    for(var i=0; i<items.length; i++) {
-        if(items[i] != '.' && items[i] != '..') {
-            console.log("Checking user: " + items[i]);
-            sensoritems = fs.readdirSync(sensorpath + items[i]);
-            for(var j=0; j<sensoritems.length; j++) {
-                if(sensoritems[j] != '.' && sensoritems[j] != '..') {
-                    console.log("Checking sensor: " + sensoritems[j]);
-                    itempath = sensorpath + items[i] + "/" + sensoritems[j];
-                    jsonstr = fs.readFileSync(itempath);
-                    if(jsonstr == undefined) {
-                        console.log("Could not read " + itempath);
-                    } else {
-                        jsonobj = JSON.parse(jsonstr);
-                        if(!('desc' in jsonobj)) {
-                            jsonobj.desc = "";
-                        }
-                        if(!('URL' in jsonobj.TTN)) {
-                            jsonobj.TTN.URL = 'https://console.thethingsnetwork.org/applications/' + jsonobj.TTN.AppId + '/devices/' + jsonobj.TTN.DevId;
-                        }
-                        sensors.push(jsonobj);
-                    }
-                }
-            }
-        }
-    }
-    console.log("Sensors: " + sensors.length);
-    return sensors;
+var getAllSensorsFcn = async function() {
+    return db.collection("sensors").find({}, {_id: 0}).toArray();
 }
 
 var indexfcn = function(req, res) {
-    res.render('pages/index', {sensors:getAllSensorsFcn(), alertType:'', alertText:''});
+    var sensors = await getAllSensorsFcn().catch(e => console.error("Could not get sensors, cause: " + e.message));
+    res.render('pages/index', {sensors: sensors, alertType:'', alertText:''});
 };
 
 app.get('/', indexfcn);
@@ -110,43 +91,49 @@ app.post('/index', function(req,res) {
         //delete action
         console.log("Deleting: " + sensorAction.replace("_delete_btn", ""));
         sensor = sensorAction.replace("_delete_btn", "");
-        itempath = findSensorPath(sensor);
-        if(itempath != undefined) {
-            fs.unlinkSync(itempath);
+        //TODO delete mechanism with multiuser
+        try {
+            await db.collection("sensors").deleteOne({ID: sensor});
             node_red_comm.deleteFlowForSensorId(sensor, (success) => {
                 alertType = success ? 'success':'failure';
                 alertText = '<strong>' + sensor + (success ? ' has been deleted successfully!': ' has dependent flows that could not be deleted. Please do that manually in Node-RED at port 1880!') +'</strong>';
-                res.render('pages/index', {sensors:getAllSensorsFcn(), alertType: alertType, alertText: alertText});
+                var sensors = await getAllSensorsFcn().catch(e => console.error("Could not get sensors, cause: " + e.message));
+                res.render('pages/index', {sensors: sensors, alertType: alertType, alertText: alertText});
             });
-        } else {
-            res.render('pages/index', {sensors:getAllSensorsFcn(), alertType: 'failure', alertText: 'Sensor was not found on the system!'});
+        } catch(e) {
+            console.log("Could not delete sensor with ID " + sensor + ", cause " + e);
+            var sensors = await getAllSensorsFcn().catch(e => console.error("Could not get sensors, cause: " + e.message));
+            res.render('pages/index', {sensors: sensors, alertType: 'failure', alertText: 'Sensor was not found on the system!'});
         }
     } else if(sensorAction.endsWith("_edit_btn")) {
         var text="{}";
         //edit action
         sensor = sensorAction.replace("_edit_btn", "");
-        itempath = findSensorPath(sensor);
-        if(itempath != undefined) {
-            text = fs.readFileSync(itempath);
+        var sensorobj = await db.collection("sensors").findOne({ID: sensor}, {_id: 0})
+            .catch(e => console.error('Could not find ' + sensor + ' in sensors, cause ' + e.message));
+        if(sensorobj != undefined) {
+            text = JSON.stringify(sensorobj);
         }
         var configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
         res.render("pages/new_sensor", {message:"", text:text, schema:configSchema});
     } else if(sensorAction.endsWith("_deploy_btn")) {
         //edit action
         sensor = sensorAction.replace("_deploy_btn", "");
-        itempath = findSensorPath(sensor);
-        if(itempath != undefined) { 
-            sensorobj = JSON.parse(fs.readFileSync(itempath));
-            var configitempath = cfgpath + '/' + sensorobj.type + '/' + sensorobj.version + '.json';
-            configobj = JSON.parse(fs.readFileSync(configitempath));
+        var sensorobj = await db.collection("sensors").findOne({ID: sensor}, {_id: 0})
+            .catch(e => console.error('Could not find ' + sensor + ' in sensors, cause ' + e.message));
+        if(sensorobj != undefined) { 
+            var configobj = await db.collection("configs").findOne({type: sensorobj.type, version: sensorobj.version}, {_id: 0})
+                .catch(e => console.error('Could not find config for type: ' + sensorobj.type 
+                + ', version: ' + sensorobj.version  + ' in configs, cause ' + e.message));
             flowObject = node_red_comm.flowObjectFromTemplate(sensorobj, configobj);
-            console.log('\n\n');
-            console.log(JSON.stringify(flowObject, null, 2));
-            console.log('\n\n');
+            // console.log('\n\n');
+            // console.log(JSON.stringify(flowObject, null, 2));
+            // console.log('\n\n');
             node_red_comm.deployFlowObject(flowObject, (success) => {
                 alertType = success ? 'success':'failure';
                 alertText = '<strong>' + sensor + (success ? ' has been deployed successfully!': ' could not be deployed!') +'</strong>';
-                res.render('pages/index', {sensors:getAllSensorsFcn(), alertType: alertType, alertText: alertText});
+                var sensors = await getAllSensorsFcn().catch(e => console.error("Could not get sensors, cause: " + e.message));
+                res.render('pages/index', {sensors: sensors, alertType: alertType, alertText: alertText});
             });
         }
         //res.redirect('/index');
@@ -187,14 +174,8 @@ app.post('/new_sensor', function(req, res) {
             if(jsonobj.type in cfgs.objects && cfgs.objects[jsonobj.type].indexOf(jsonobj.version) >= 0) {
                 sensor_valid = true;
                 //TODO check if exists
-                fs.open(sensorpath + user + "/" + jsonobj.ID + ".json", 'w', (err, fd) => {
-                    if (err) throw err;
-                    fs.write(fd, req.body.text, (err, written, buffer) => {
-                        fs.close(fd, (err)=> {
-                            if (err) throw err;
-                        });
-                    });
-                });
+                db.collection("sensors").updateOne({ID: jsonobj.ID}, {"$set": jsonobj}, {upsert: 1})
+                    .catch(e => console.error("Could not get update sensor" + jsnobj.ID + ", cause: " + e.message));
             } else {
                 message = "Type / version combination invalid!";
             }
@@ -212,22 +193,10 @@ app.post('/new_sensor', function(req, res) {
 });
 
 var listcfgsfun = function() {
-    var cfgs = {};
+    var cfgs = await db.collection("configs").find({}, {_id: 0}).toArray()
+        .catch(e => console.error("Could not get configs, cause: " + e.message));
     var type = "";
     var version = "";
-    typels = fs.readdirSync(cfgpath);
-    for(var i=0; i<typels.length; i++) {
-        if(typels[i] != '.' && typels[i] != '..') {
-            versionls = fs.readdirSync(cfgpath + typels[i]);
-            var versionnames = [];
-            for(var j=0; j<versionls.length; j++) {
-                if(versionls[j].endsWith('.json')) {
-                    versionnames.push(versionls[j].substring(0,versionls[j].indexOf('.json')));
-                }
-            }
-            cfgs[typels[i]] = versionnames;
-        }
-    }
     if(Object.keys(cfgs).length > 0) {
         type = Object.keys(cfgs)[0];
         if(cfgs[type].length > 0) {
@@ -279,19 +248,8 @@ app.post('/new_config', function(req, res) {
                     message = "";
                     cfg_valid = true;
                     var typepath = cfgpath + req.body.type + "/";
-                    if(!(fs.existsSync(typepath))) {
-                        fs.mkdirSync(typepath);
-                    }
-
-                    //Save config
-                    fs.open(typepath + req.body.version + ".json", 'w', (err, fd) => {
-                        if (err) throw err;
-                        fs.write(fd, req.body.text, (err, written, buffer) => {
-                            fs.close(fd, (err)=> {
-                                if (err) throw err;
-                            });
-                        });
-                    });
+                    db.collection("configs").updateOne({type: req.body.type, version: req.body.version}, {"$set": jsonobj}, {upsert: 1})
+                        .catch(e => console.error("Could not update config" + req.body.type + ", " +  req.body.version + ", cause: " + e.message));
                 }
             }
         } else {
@@ -321,16 +279,13 @@ app.put('/new_config', function(req, res) {
     // Put request is used for requesting json description for type / version combination
     // -> expects res.send() call
     console.log("Got data: " + util.inspect(req.body));
-    var fullpath = cfgpath + req.body.type + "/" + req.body.version + ".json";
-    try {
-        if(fs.existsSync(fullpath)) {
-            jsonstr = fs.readFileSync(fullpath);
-            res.send(jsonstr);
-        } else {
-            res.send('');
-        }
-    } catch(err) {
-        console.log(err);
+
+    var jsonobj = await db.collection("configs").findOne({type: req.body.type, version: req.body.version}, {_id: 0})
+        .catch(e => console.error("Could not find config" + req.body.type + ", " +  req.body.version + ", cause: " + e.message));
+    if(jsonobj != undefined) {
+        jsonstr = JSON.stringify(jsonobj);
+        res.send(jsonstr);
+    } else {
         res.send('');
     }
 });
