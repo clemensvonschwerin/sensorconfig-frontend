@@ -55,6 +55,7 @@ db().then(db => {
         function(username, password, callback) {
             //console.log("Got user: " + username + ", pw: " + password);
             db.collection("users").findOne({username: username}, function(err, user) {
+                console.log("Got user: " + util.inspect(user));
                 if(err) { console.error("Error during authentication: " + err); return callback(err); }
                 if(!user) { console.log("Incorrect username"); return callback(null, false, {message: 'Incorrect username.'}); }
                 if(!bcrypt.compareSync(password, user.passwordHash)) {
@@ -67,12 +68,13 @@ db().then(db => {
     ));
 
     passport.serializeUser(function(user, callback) {
-        callback(null, user._id);
+        callback(null, user.username);
     });
 
-    passport.deserializeUser(function(id, cb) {
-        db.collection("users").find({_id: id}, function(err, user) {
-            if(err) { return cb(err); }
+    passport.deserializeUser(function(username, cb) {
+        db.collection("users").findOne({username: username}, function(err, user) {
+            if(err) { console.error("Cannot deserialize user: " + err.message); return cb(err); }
+            console.log("deserialized user: " + util.inspect(user));
             cb(null, user);
         });
     })
@@ -347,6 +349,17 @@ db().then(db => {
                 res.send(jsonstr);
             } else {
                 res.send('');
+            }
+        });
+
+        app.get('/user_management', loginControl.ensureLoggedIn('/login'), async function(req, res) {
+            console.log("Calling user: " + util.inspect(req.user));
+            if(req.user.role != "admin") {
+                res.redirect('/');
+            } else {
+                var testusers = [{username: "test", passwordHash:"123", role:"standarduser", sensors:["testsensor1", "testsensor_2_"], alertType:"success", alertText:"New password is 123"}];
+                var testroles = ["admin", "standarduser"]
+                res.render('pages/user_management', {users: testusers, roles: testroles, alertType: ""});
             }
         });
 
