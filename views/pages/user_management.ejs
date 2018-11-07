@@ -44,12 +44,7 @@
 		role = role.substr(0, role.indexOf('</span>'));
 		username = role_elem.replace('#','');
 		username = username.replace('_role_elem', '');
-		/*var params = {'role': role, 'username': role_elem.replace('#','').replace('_role_elem', '')};
-		var xhr = new XMLHttpRequest();
-		xhr.open('POST', '/save_role');
-		xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-		xhr.send(JSON.stringify(params)); */
-		
+
 		$('#save_role_user').val(username);
 		$('#save_role_role').val(role);
 		$('#save_user_role_form').submit();
@@ -57,10 +52,31 @@
 		//No form submission for sending button
 		return false; 
 	};
-	/*generate_new_user_pw = function() {
-		//TODO
-		return false;
-	};*/
+	generateRandomPassword = function() {
+		//From: https://stackoverflow.com/questions/5651789/is-math-random-cryptographically-secure
+		var array = new Uint32Array(10);
+		window.crypto.getRandomValues(array);
+		var keylist="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+		var pw = '';
+		for(i=0; i<array.length; i++) {
+			pw += keylist.charAt(array[i] % keylist.length);
+		}
+		return pw;
+	}
+	generate_new_user_pw = function() {
+		$('#password_edit').val(generateRandomPassword());
+	}
+	setPassword = function(username) {
+		console.log("POST request to /set_password");
+		var password = generateRandomPassword();
+
+		$('#set_password_user').val(username);
+		$('#set_password_password').val(password);
+		$('#set_password_form').submit();
+		
+		//No form submission for sending button
+		return false; 
+	};
 	</script>
 
   </head>
@@ -80,8 +96,8 @@
 				<tr>
 					<td><u>User:</u></td>
 					<td><%= users[i].username %></td>
-					<td><input name="<%= users[i].username %>_generate_pw_btn" type="submit" class="btn fixed-80" value="Generate new password" /></td>
-					<td><input name="<%= users[i].username %>_delete_btn" type="submit" class="btn fixed-80" value="Delete" /></td>
+					<td><button id="<%= users[i].username %>_generate_pw_btn" type="button" class="btn" onclick="setPassword('<%= users[i].username %>');">Generate new password</button></td>
+					<td><button id="<%= users[i].username %>_delete_btn" type="button" class="btn">Delete</button></td>
 				</tr>
 				<tr>
 					<td><u>Role:</u></td>
@@ -173,10 +189,10 @@
 					<label for="password_edit" class="col-form-label" style="display: inline-block;">Password:</label>
 				</div>
 				<div class="col">	
-					<input name="password_edit" class="form-control" type="edit" style="display: inline-block;" />
+					<input id="password_edit" name="password_edit" class="form-control" type="edit" style="display: inline-block;" />
 				</div>
 				<div class="col">
-					<button id="generate_new_user_pw_btn" class="btn" onclick="generate_new_user_pw();">Generate</button>
+					<button id="generate_new_user_pw_btn" type="button" class="btn" onclick="generate_new_user_pw();">Generate</button>
 				</div>
 			</div>
 		</form>
@@ -196,6 +212,11 @@
 	<form id="save_user_role_form" action="/save_role" method="post" enctype='application/json'>
 		<input type="hidden" name="username" id="save_role_user" />
 		<input type="hidden" name="role" id="save_role_role" />
+	</form>
+	
+	<form id="set_password_form" action="/set_password" method="post" enctype='application/json'>
+		<input type="hidden" name="username" id="set_password_user" />
+		<input type="hidden" name="password" id="set_password_password" />
 	</form>
     
   </body>

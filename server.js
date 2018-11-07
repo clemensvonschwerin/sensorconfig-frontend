@@ -239,7 +239,7 @@ db().then(db => {
                 console.log(result);
                 if (result.errors.length == 0) {
                     //custom validation -> type / version must be a valid configuration file
-                    cfgs = listcfgsfun();
+                    cfgs = await listcfgsfun();
                     console.log(jsonobj.type + ' in cfgs.objects ' + (jsonobj.type in cfgs.objects));
                     console.log(jsonobj.version + ' in ' + cfgs.objects[jsonobj.type] + ' ' + (cfgs.objects[jsonobj.type].indexOf(jsonobj.version) >= 0));
                     if(jsonobj.type in cfgs.objects && cfgs.objects[jsonobj.type].indexOf(jsonobj.version) >= 0) {
@@ -487,6 +487,19 @@ db().then(db => {
                     req.flash('user_alert', JSON.stringify({user: req.body.username, alertType:"failure", alertText:"Cannot access database: " + e.message}));
                     res.redirect('/user_management');
                 }); 
+            }
+        });
+
+        app.post('/set_password', loginControl.ensureLoggedIn('/login'), async function(req, res) {
+            if(req.user.role != roles.admin) {
+                res.redirect('/');
+            } else {
+                console.log("Setting pw " + req.body.password + " for user " + req.body.username);
+                db.collection("users").update({username: req.body.username}, {"$set": {passwordHash: bcrypt.hashSync(req.body.password, 10)}},
+                    {upsert: false})
+                        .then(req.flash('user_alert', JSON.stringify({username:req.body.username, alertType:"success", alertText:"Updated password to: '" + req.body.password + "'"})))
+                        .catch(e => req.flash('user_alert', JSON.stringify({username: req.body.username, alertType:"failure", alertText:"Could not update password for " + req.body.username + ": " + e.message})))
+                        .finally(res.redirect('/user_management'));
             }
         });
 
