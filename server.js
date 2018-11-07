@@ -25,6 +25,30 @@ const sensorpath = '/home/kuchen/sensors/users/';
 
 var JSONSchemaValidator = require('jsonschema').Validator;
 
+//From: https://stackoverflow.com/questions/4597900/checking-something-isempty-in-javascript
+function isEmpty(value) {
+    var isEmptyObject = function(a) {
+      if (typeof a.length === 'undefined') { // it's an Object, not an Array
+        var hasNonempty = Object.keys(a).some(function nonEmpty(element){
+          return !isEmpty(a[element]);
+        });
+        return hasNonempty ? false : isEmptyObject(Object.keys(a));
+      }
+  
+      return !a.some(function nonEmpty(element) { // check if array is really not empty as JS thinks
+        return !isEmpty(element); // at least one element should be non-empty
+      });
+    };
+    return (
+      value == false
+      || typeof value === 'undefined'
+      || value == null
+      || (typeof value === 'object' && isEmptyObject(value))
+    );
+  }
+
+const roles = {admin: "admin", standarduser: "standarduser"};
+
 const dburl = 'mongodb://127.0.0.1:27017/sensorconfigdb';
 var dbrep = undefined;
 
@@ -74,7 +98,7 @@ db().then(db => {
     passport.deserializeUser(function(username, cb) {
         db.collection("users").findOne({username: username}, function(err, user) {
             if(err) { console.error("Cannot deserialize user: " + err.message); return cb(err); }
-            console.log("deserialized user: " + util.inspect(user));
+            //console.log("deserialized user: " + util.inspect(user));
             cb(null, user);
         });
     })
@@ -118,7 +142,7 @@ db().then(db => {
 
         var indexfcn = async function(req, res) {
             var sensors = await getAllSensorsFcn().catch(e => console.error("Could not get sensors, cause: " + e.message));
-            res.render('pages/index', {sensors: sensors, alertType:'', alertText:''});
+            res.render('pages/index', {sensors: sensors, user: req.user, alertType:'', alertText:''});
         };
 
         app.get('/', loginControl.ensureLoggedIn('/login'), indexfcn);
@@ -139,12 +163,12 @@ db().then(db => {
                         alertType = success ? 'success':'failure';
                         alertText = '<strong>' + sensor + (success ? ' has been deleted successfully!': ' has dependent flows that could not be deleted. Please do that manually in Node-RED at port 1880!') +'</strong>';
                         var sensors = await getAllSensorsFcn().catch(e => console.error("Could not get sensors, cause: " + e.message));
-                        res.render('pages/index', {sensors: sensors, alertType: alertType, alertText: alertText});
+                        res.render('pages/index', {sensors: sensors, user: req.user, alertType: alertType, alertText: alertText});
                     });
                 } catch(e) {
                     console.log("Could not delete sensor with ID " + sensor + ", cause " + e);
                     var sensors = await getAllSensorsFcn().catch(e => console.error("Could not get sensors, cause: " + e.message));
-                    res.render('pages/index', {sensors: sensors, alertType: 'failure', alertText: 'Sensor was not found on the system!'});
+                    res.render('pages/index', {sensors: sensors, user: req.user, alertType: 'failure', alertText: 'Sensor was not found on the system!'});
                 }
             } else if(sensorAction.endsWith("_edit_btn")) {
                 var text="{}";
@@ -174,7 +198,7 @@ db().then(db => {
                         alertType = success ? 'success':'failure';
                         alertText = '<strong>' + sensor + (success ? ' has been deployed successfully!': ' could not be deployed!') +'</strong>';
                         var sensors = await getAllSensorsFcn().catch(e => console.error("Could not get sensors, cause: " + e.message));
-                        res.render('pages/index', {sensors: sensors, alertType: alertType, alertText: alertText});
+                        res.render('pages/index', {sensors: sensors, user: req.user, alertType: alertType, alertText: alertText});
                     });
                 }
                 //res.redirect('/index');
@@ -357,9 +381,112 @@ db().then(db => {
             if(req.user.role != "admin") {
                 res.redirect('/');
             } else {
+                /*
                 var testusers = [{username: "test", passwordHash:"123", role:"standarduser", sensors:["testsensor1", "testsensor_2_"], alertType:"success", alertText:"New password is 123"}];
                 var testroles = ["admin", "standarduser"]
                 res.render('pages/user_management', {users: testusers, roles: testroles, alertType: ""});
+                */
+
+                db.collection("users").find({}, {_id:0}).toArray().then(users => {
+                    var user_alert = {};
+                    var add_user_alert = {alertType: "", alertText: ""};
+                    var user_alert_string = req.flash('user_alert');
+                    var add_user_alert_string = req.flash('add_user_alert');
+                    console.log('User alert: ' + user_alert_string);
+                    if(!isEmpty(user_alert_string)) {
+                        user_alert = JSON.parse(user_alert_string);
+                    }
+                    if(!isEmpty(add_user_alert_string)) {
+                        add_user_alert = JSON.parse(add_user_alert_string);
+                    }
+                    
+                    for(i=0; i<users.length; i++) {
+                        if(user_alert && user_alert.username == users[i].username) {
+                            users[i].alertType = user_alert.alertType;
+                            users[i].alertText = user_alert.alertText;
+                            console.log("Setting alert for user: " + users[i].username);
+                        } else {
+                            users[i].alertType = "";
+                            users[i].alertText = "";
+                        }
+                    }
+
+                    var rolesArray = Object.values(roles);
+
+                    res.render('pages/user_management', {users: users, roles: rolesArray, 
+                        alertType: add_user_alert.alertType, alertText:add_user_alert.alertText});
+                });
+
+            }
+        });
+
+        app.post('/user_mangement', loginControl.ensureLoggedIn('/login'), async function(req, res) {
+            if(req.user.role != "admin") {
+                res.redirect('/');
+            } else {
+            }
+        });
+
+        app.post('/new_user', loginControl.ensureLoggedIn('/login'), async function(req, res) {
+            if(req.user.role != "admin") {
+                res.redirect('/');
+            } else {
+                console.log("Got request body: " + util.inspect(req.body));
+                var newUsername = req.body.username_edit;
+                var newPassword = req.body.password_edit;
+                if(newUsername != "" && newPassword.length >= 8) {
+                    db.collection("users").findOne({username: newUsername}).then(user => {
+                        if(user) {
+                            req.flash('add_user_alert', JSON.stringify({alertType:'failure', alertText:'Could not create user, user already exists'}));
+                            res.redirect('/user_management');
+                        } else {
+                            db.collection("users").insert({username: newUsername, passwordHash: bcrypt.hashSync(newPassword, 10), 
+                                role: "standarduser", sensors:[]})
+                                    .then(req.flash('add_user_alert', JSON.stringify({alertType:"success", alertText:"Successfully created user " + newUsername})))
+                                    .catch(e => req.flash('add_user_alert', JSON.stringify({alertType:"failure", alertText:"Cannot inser user" + newUsername + " in db: " + e.message})))
+                                    .finally(res.redirect('/user_management'));
+                        }
+                    })
+                } else {
+                    req.flash('add_user_alert', JSON.stringify({alertType:'failure', alertText:'Username may not be empty and password must contain at least 8 characters!'}));
+                    res.redirect('/user_management');
+                }
+            }
+        });
+
+        app.post('/save_role', loginControl.ensureLoggedIn('/login'), async function(req, res) {
+            if(req.user.role != roles.admin) {
+                res.redirect('/');
+            } else {
+                console.log("Save role: Got request body: " + util.inspect(req.body));
+                db.collection("users").findOne({username: req.body.username}).then(dbuser => {
+                    //Check if there is still an admin after demotion
+                    console.log(dbuser.role + ", " + req.body.role + ", " + (dbuser.role == roles.admin) + ", " + (req.body.role != roles.admin));
+                    if(dbuser.role == roles.admin && req.body.role != roles.admin) {
+                        db.collection("users").findOne({role: roles.admin, username: {"$ne": dbuser.username}}).then(otherAdmin => {
+                            console.log("Other admin: " + util.inspect(otherAdmin));
+                            if(isEmpty(otherAdmin)) {
+                                req.flash('user_alert', JSON.stringify({username: req.body.username, alertType:"failure", alertText:"Cannot demote the only admin!"}));
+                                res.redirect('/user_management');
+                            } else {
+                                db.collection("users").updateOne({username: req.body.username}, {"$set": {role: req.body.role}})
+                                    .then(req.flash('user_alert', JSON.stringify({username:req.body.username, alertType:"success", alertText:"Updated role to " + req.body.role})))
+                                    .catch(e => req.flash('user_alert', JSON.stringify({username: req.body.username, alertType:"failure", alertText:"Cannot update user in db: " + e.message})))
+                                    .finally(res.redirect('/user_management'));
+                            }
+                        });
+                    } else {
+                        //Otherwise change user role without further checks
+                        db.collection("users").updateOne({username: req.body.username}, {"$set": {role: req.body.role}})
+                            .then(req.flash('user_alert', JSON.stringify({username:req.body.username, alertType:"success", alertText:"Updated role to " + req.body.role})))
+                            .catch(e => req.flash('user_alert', JSON.stringify({username: req.body.username, alertType:"failure", alertText:"Cannot update user in db: " + e.message})))
+                            .finally(res.redirect('/user_management'));
+                    }
+                })
+                .catch(e => {
+                    req.flash('user_alert', JSON.stringify({user: req.body.username, alertType:"failure", alertText:"Cannot access database: " + e.message}));
+                    res.redirect('/user_management');
+                }); 
             }
         });
 
