@@ -267,33 +267,40 @@ db().then(db => {
             var cfgs = {};
             var type = "";
             var version = "";
-            var aggregate = db.collection("configs").aggregate([{
-                $group: {
-                    _id: "$type",
-                    versions: {$push: "$version"}
-                }   
-            }]).toArray().catch(e => console.error("Could not get configs, cause: " + e.message));
-            console.log("aggregation result: " + util.inspect(aggregate));
-
-            if(aggregate != undefined) {
-                for(i=0; i<aggregate.length; i++) {
-                    cfgs[aggregate[i]._id] = aggregate[i].versions;
-                }
-            }
+            return new Promise((resolve, reject) => {
+                db.collection("configs").aggregate([{
+                    $group: {
+                        _id: "$type",
+                        versions: {$push: "$version"}
+                    }   
+                }]).toArray()
+                    .then(aggregate => {
+                        console.log("aggregation result: " + util.inspect(aggregate));
+    
+                        if(aggregate != undefined) {
+                            for(i=0; i<aggregate.length; i++) {
+                                cfgs[aggregate[i]._id] = aggregate[i].versions;
+                            }
+                        }
+                        
+                        if(Object.keys(cfgs).length > 0) {
+                            type = Object.keys(cfgs)[0];
+                            if(cfgs[type].length > 0) {
+                                version = cfgs[type][0];
+                            }
+                        }
+                        console.log("cfg.objects: " + util.inspect(cfgs) + ", cfg.type empty: " + (type == "") + ", cfg.version empty: " + (version == ""));
+                        resolve( {type:type, version:version, objects:cfgs} );
+                    })
+                    .catch(e => reject(e));
+            });
             
-            if(Object.keys(cfgs).length > 0) {
-                type = Object.keys(cfgs)[0];
-                if(cfgs[type].length > 0) {
-                    version = cfgs[type][0];
-                }
-            }
-            console.log("cfg.objects: " + util.inspect(cfgs) + ", cfg.type empty: " + (type == "") + ", cfg.version empty: " + (version == ""));
-            return {type:type, version:version, objects:cfgs};
         };
 
         app.get('/new_config', loginControl.ensureLoggedIn('/login'), async function(req, res) {
             var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json');
             var cfgs = await listcfgsfun();
+            console.log("cfgs.type: " + cfgs.type);
             res.render('pages/new_configuration', {message:"", text:"{}", cfgs: cfgs, schema:configSchema});
         });
 
@@ -333,8 +340,26 @@ db().then(db => {
                             message = "";
                             cfg_valid = true;
                             var typepath = cfgpath + req.body.type + "/";
-                            db.collection("configs").updateOne({type: req.body.type, version: req.body.version}, {"$set": jsonobj}, {upsert: 1})
-                                .catch(e => console.error("Could not update config" + req.body.type + ", " +  req.body.version + ", cause: " + e.message));
+                            console.log("Config is valid, prepare inserting!");
+                            jsonobj.type = req.body.type;
+                            jsonobj.version = req.body.version;
+                            db.collection("configs").insertOne(jsonobj)
+                                .then(() => {
+                                    message = "Configuration was saved successfully!";
+                                    listcfgsfun().then(cfgs => {
+                                        cfgs.type = req.body.type;
+                                        cfgs.version = req.body.version;
+                                        res.render('pages/new_configuration', {message: message, text:req.body.text, cfgs:cfgs, schema:configSchema});
+                                    })
+                                    .catch(e => console.log("Could not get configs: " + e.message));
+                                })
+                                .catch(e => {
+                                    message = "Could not update config " + req.body.type + ", " +  req.body.version + ", cause: " + e.message;
+                                    listcfgsfun().then(cfgs => {
+                                        res.render('pages/new_configuration', {message: message, text:req.body.text, cfgs:cfgs, schema:configSchema});
+                                    })
+                                    .catch(e => console.log("Could not get configs: " + e.message));
+                                });
                         }
                     }
                 } else {
@@ -344,21 +369,12 @@ db().then(db => {
                 message = "Parsing sensor description failed with error message:\n" + err;
             }
             if(!cfg_valid) {
+                console.log("Config is not valid, prepare rendering!");
                 var cfgs = await listcfgsfun();
-                res.render('pages/new_configuration', {message: message, text:req.body.text, cfgs:cfgs, schema:configSchema});
-            } else {
-                var cfgs = await listcfgsfun();
-                if(!(req.body.type in cfgs.objects)) {
-                    cfgs.objects[req.body.type] = [];
-                }
-                if(!(req.body.version in cfgs.objects[req.body.type])) {
-                    cfgs.objects[req.body.type].push(req.body.version);
-                }
                 cfgs.type = req.body.type;
                 cfgs.version = req.body.version;
-                res.render('pages/new_configuration', {message: "Configuration was saved successfully!", text:req.body.text, cfgs:cfgs, schema:configSchema});
+                res.render('pages/new_configuration', {message: message, text:req.body.text, cfgs:cfgs, schema:configSchema});
             }
-        
         });
 
         app.put('/new_config', loginControl.ensureLoggedIn('/login'), async function(req, res) {
@@ -366,14 +382,18 @@ db().then(db => {
             // -> expects res.send() call
             console.log("Got data: " + util.inspect(req.body));
 
-            var jsonobj = db.collection("configs").findOne({type: req.body.type, version: req.body.version}, {_id: 0})
-                .catch(e => console.error("Could not find config" + req.body.type + ", " +  req.body.version + ", cause: " + e.message));
-            if(jsonobj != undefined) {
-                jsonstr = JSON.stringify(jsonobj);
-                res.send(jsonstr);
-            } else {
-                res.send('');
-            }
+            db.collection("configs").findOne({type: req.body.type, version: req.body.version}, {fields: {_id: 0, type: 0, version: 0}})
+                .then(config => {
+                    if(!isEmpty(config)) {
+                        res.send(JSON.stringify(config, null, 2));
+                    } else {
+                        res.send('');
+                    }
+                })
+                .catch(e => {
+                    console.error("Could not find config" + req.body.type + ", " +  req.body.version + ", cause: " + e.message);
+                    res.send('');
+                });
         });
 
         app.get('/user_management', loginControl.ensureLoggedIn('/login'), async function(req, res) {
