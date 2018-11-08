@@ -15,6 +15,7 @@
 		table.fixed td:nth-of-type(3) {width:200px;}/*Setting the width of column 3.*/
 		table.fixed td:nth-of-type(4) {width:100px;}/*Setting the width of column 4.*/
 		button.fixed-80 {width:80px;}
+		button.delete {}
 		.collapse-btn {}
 		.role-elem-content {}
 	</style>
@@ -77,13 +78,28 @@
 		//No form submission for sending button
 		return false; 
 	};
+	$(function() {
+		$('[data-toggle=confirmation]').confirmation({
+			rootSelector: '[data-toggle=confirmation]',
+			popout: true,
+			confirmationEvent: 'change'
+		});
+	});
+	deletefcn = function(delobj) {
+		console.log('Deletion confirmed'); 
+		$(delobj).val('Delete'); 
+		$(delobj).prop('disabled', false);
+		var username = delobj.replace('#','');
+		username = username.substring(0, username.lastIndexOf('_delete_btn'));
+		$('#delete_user_username').val(username);
+		$('#delete_user_form').submit();
+	};
 	</script>
 
   </head>
 
   <body id="page-top">
 	<div class="container-fluid">
-		<form id="edit-or-delete-form" action="/user_management" method="post" enctype='application/json'>
 		  <% for(var i=0; i<users.length; i++) { %>
 		  
 			<table class="fixed">
@@ -97,7 +113,10 @@
 					<td><u>User:</u></td>
 					<td><%= users[i].username %></td>
 					<td><button id="<%= users[i].username %>_generate_pw_btn" type="button" class="btn" onclick="setPassword('<%= users[i].username %>');">Generate new password</button></td>
-					<td><button id="<%= users[i].username %>_delete_btn" type="button" class="btn">Delete</button></td>
+					<td>
+						<button id="<%= users[i].username %>_delete_confirm_btn" class="btn delete" data-toggle="confirmation" onchange="deletefcn('#<%= users[i].username %>_delete_btn');">Delete</button>
+						<input id="<%= users[i].username %>_delete_btn" name="<%= users[i].username %>_delete_btn" type="text" class="btn fixed-80" disabled="disabled" style="visibility: hidden; display: none;" />
+					</td>
 				</tr>
 				<tr>
 					<td><u>Role:</u></td>
@@ -170,8 +189,6 @@
 			
 		  
 		  <% } //end-for %>
-		  
-		</form>
 	  
 	  
 		<form id="new_user_form" action="/new_user" method="post" enctype='application/json'>
@@ -217,6 +234,10 @@
 	<form id="set_password_form" action="/set_password" method="post" enctype='application/json'>
 		<input type="hidden" name="username" id="set_password_user" />
 		<input type="hidden" name="password" id="set_password_password" />
+	</form>
+	
+	<form id="delete_user_form" action="/delete_user" method="post" enctype='application/json'>
+		<input type="hidden" name="username" id="delete_user_username" />
 	</form>
 	
 	<% include ../partials/footer.ejs %>

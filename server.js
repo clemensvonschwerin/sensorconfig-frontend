@@ -172,17 +172,25 @@ db().then(db => {
                 //delete action
                 console.log("Deleting: " + sensorAction.replace("_delete_btn", ""));
                 sensor = sensorAction.replace("_delete_btn", "");
-                //TODO delete mechanism with multiuser
-                try {
-                    await db.collection("sensors").deleteOne({ID: sensor});
-                    node_red_comm.deleteFlowForSensorId(sensor, async function(success) {
-                        alertType = success ? 'success':'failure';
-                        alertText = '<strong>' + sensor + (success ? ' has been deleted successfully!': ' has dependent flows that could not be deleted. Please do that manually in Node-RED at port 1880!') +'</strong>';
-                        indexfcn(req, res, alertType, alertText);
+                if(req.user.role == roles.admin || req.user.sensors.includes(sensor)) {
+                    db.collection("sensors").findOne({ID: sensor})
+                        .then(sensorobj => {
+                            db.collection("users").updateMany({username: {"$in": sensorobj.users}}, {"$pull": {sensors: sensor}})
+                                .then(db.collection("sensors").deleteOne({ID: sensor}))
+                                    .then(() => {
+                                            node_red_comm.deleteFlowForSensorId(sensor, async function(success) {
+                                            alertType = success ? 'success':'failure';
+                                            alertText = '<strong>' + sensor + (success ? ' has been deleted successfully!': ' has dependent flows that could not be deleted. Please do that manually in Node-RED at port 1880!') +'</strong>';
+                                            indexfcn(req, res, alertType, alertText);
+                                        });
+                                    })
+                        })
+                    .catch(e => {
+                        console.log("Could not delete sensor with ID " + sensor + ", cause " + e);
+                        indexfcn(req, res, 'failure', 'Internal error during sensor deletion!');
                     });
-                } catch(e) {
-                    console.log("Could not delete sensor with ID " + sensor + ", cause " + e);
-                    indexfcn(req, res, 'failure', 'Sensor was not found on the system!');
+                } else {
+                    indexfcn(req, res, 'failure', 'Operation not permitted!');
                 }
             } else if(sensorAction.endsWith("_edit_btn")) {
                 var text="{}";
@@ -225,10 +233,10 @@ db().then(db => {
             if(req.user.role == roles.admin || req.user.sensors.includes(req.body.sensorid)) {
                 db.collection("sensors").update({ID: req.body.sensorid}, {"$addToSet": {users: req.body.username}})
                     .then(() => {
-                        db.collection("users").update({username: req.body.username}, {"$addToSet": {sensors: req.body.sensorid}});
                         console.log("pushing " + req.body.sensorid + " to " + req.body.username + ".sensors");
+                        db.collection("users").update({username: req.body.username}, {"$addToSet": {sensors: req.body.sensorid}})
+                            .then(indexfcn(req, res, 'success', "Setting " + req.body.user + " as owner for " + req.body.sensorid + " was successful!" ))
                     })
-                    .then(indexfcn(req, res, 'success', "Setting " + req.body.user + " as owner for " + req.body.sensorid + " was successful!" ))
                     .catch(e=> indexfcn(req, res, 'success', "Could not set " + req.body.user + " as owner for " + req.body.sensorid + ": " + e.message ));
             } else {
                 indexfcn(req, res, 'failure', "Operation not permitted!" );
@@ -572,6 +580,29 @@ db().then(db => {
                         .then(req.flash('user_alert', JSON.stringify({username:req.body.username, alertType:"success", alertText:"Updated password to: '" + req.body.password + "'"})))
                         .catch(e => req.flash('user_alert', JSON.stringify({username: req.body.username, alertType:"failure", alertText:"Could not update password for " + req.body.username + ": " + e.message})))
                         .finally(res.redirect('/user_management'));
+            }
+        });
+
+        app.post('/delete_user', loginControl.ensureLoggedIn('/login'), async function(req, res) {
+            console.log("/delete_user: got request body: " + util.inspect(req.body));
+            if(req.user.role == roles.admin && req.user.username != req.body.username) {
+                db.collection("users").findOne({username: req.body.username})
+                    .then(userobj => {
+                        db.collection("sensors").updateMany({ID: {"$in": userobj.sensors}}, {"$pull": {users: req.body.username}})
+                            .then(db.collection("users").deleteOne({username: req.body.username}))
+                                .then(() => {
+                                    req.flash('add_user_alert', JSON.stringify({alertType:"success", alertText:"Successfully deleted user " + req.body.username}));
+                                    res.redirect('/user_management');
+                                })
+                    })
+                    .catch(e => {
+                        console.log("Could not delete user " + req.body.username + ", cause " + e.message);
+                        req.flash('add_user_alert', JSON.stringify({alertType:"failure", alertText:"Could not delete user " + req.body.username + ", cause " + e.message}));
+                        res.redirect('/user_management');
+                    });
+            } else {
+                req.flash('add_user_alert', JSON.stringify({alertType:"failure", alertText:"Operation not permitted!"}));
+                res.redirect('/user_management');
             }
         });
 
