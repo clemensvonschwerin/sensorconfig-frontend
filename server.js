@@ -245,6 +245,11 @@ db().then(db => {
 
         app.post('/login', passport.authenticate('local', { successRedirect: '/', failureRedirect: '/login', failureFlash: true }));
 
+        app.get('/logout', function(req, res){
+            req.logout();
+            res.redirect('/login');
+        });
+
         app.get('/new_sensor', loginControl.ensureLoggedIn('/login'), function(req, res) {
             var configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
             res.render('pages/new_sensor', {message:"", text:"{}", schema:configSchema});
