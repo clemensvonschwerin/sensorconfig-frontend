@@ -196,20 +196,26 @@ db().then(db => {
                 var text="{}";
                 //edit action
                 sensor = sensorAction.replace("_edit_btn", "");
-                var sensorobj = db.collection("sensors").findOne({ID: sensor}, {_id: 0})
-                    .catch(e => console.error('Could not find ' + sensor + ' in sensors, cause ' + e.message));
-                if(sensorobj != undefined) {
-                    text = JSON.stringify(sensorobj);
-                }
-                var configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
-                res.render("pages/new_sensor", {message:"", text:text, schema:configSchema});
+                
+                db.collection("sensors").findOne({ID: sensor}, {fields: {_id: 0, users: 0}})
+                    .then(sensorobj => {
+                        var configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
+                        if(!isEmpty(sensorobj)) {
+                            text = JSON.stringify(sensorobj, null, 2);
+                        } 
+                        res.render("pages/new_sensor", {message:"", text:text, schema:configSchema});
+                    })
+                    .catch(e => {
+                        console.error('Could not load description for ' + sensor + ', cause ' + e.message);
+                        res.redirect('/index');
+                    });
             } else if(sensorAction.endsWith("_deploy_btn")) {
                 //edit action
                 sensor = sensorAction.replace("_deploy_btn", "");
-                var sensorobj = db.collection("sensors").findOne({ID: sensor}, {_id: 0})
+                var sensorobj = await db.collection("sensors").findOne({ID: sensor}, {fields: {_id: 0, users: 0}})
                     .catch(e => console.error('Could not find ' + sensor + ' in sensors, cause ' + e.message));
                 if(sensorobj != undefined) { 
-                    var configobj = db.collection("configs").findOne({type: sensorobj.type, version: sensorobj.version}, {_id: 0})
+                    var configobj = await db.collection("configs").findOne({type: sensorobj.type, version: sensorobj.version}, {fields: {_id: 0}})
                         .catch(e => console.error('Could not find config for type: ' + sensorobj.type 
                         + ', version: ' + sensorobj.version  + ' in configs, cause ' + e.message));
                     flowObject = node_red_comm.flowObjectFromTemplate(sensorobj, configobj);
@@ -282,33 +288,37 @@ db().then(db => {
                     console.log(jsonobj.type + ' in cfgs.objects ' + (jsonobj.type in cfgs.objects));
                     console.log(jsonobj.version + ' in ' + cfgs.objects[jsonobj.type] + ' ' + (cfgs.objects[jsonobj.type].indexOf(jsonobj.version) >= 0));
                     if(jsonobj.type in cfgs.objects && cfgs.objects[jsonobj.type].indexOf(jsonobj.version) >= 0) {
-                        sensor_valid = true;
-                        db.collection("sensors").findOne({ID: jsonobj.ID})
-                            .then(result => {
-                                if(!isEmpty(result))  {
-                                    //Sensor already exists
-                                    if(req.user.username in result.users) {
-                                        //user is allowed to write
-                                        db.collection("sensors").updateOne({ID: jsonobj.ID}, {"$set": jsonobj}, {upsert: 1})
-                                            .then(() => {
-                                                res.render('pages/new_sensor', {message: "Sensor update successful!", text:req.body.text, schema:configSchema});
-                                            })
-                                            .catch(e => console.error("Could not update sensor " + jsonobj.ID + ", cause: " + e.message));
+                        if(jsonobj.ID.indexOf(' ') > 0) {
+                            message = "No spaces allowed in ID field!";
+                        } else {
+                            sensor_valid = true;
+                            db.collection("sensors").findOne({ID: jsonobj.ID})
+                                .then(result => {
+                                    if(!isEmpty(result))  {
+                                        //Sensor already exists
+                                        if(req.user.role == roles.admin || result.users.includes(req.user.username)) {
+                                            //user is allowed to write
+                                            db.collection("sensors").updateOne({ID: jsonobj.ID}, {"$set": jsonobj}, {upsert: 1})
+                                                .then(() => {
+                                                    res.render('pages/new_sensor', {message: "Sensor update successful!", text:req.body.text, schema:configSchema});
+                                                })
+                                                .catch(e => console.error("Could not update sensor " + jsonobj.ID + ", cause: " + e.message));
+                                        } else {
+                                            res.render('pages/new_sensor', {message: "Sensor already exists and you are not permitted to change it.", text:req.body.text, schema:configSchema});
+                                        }
                                     } else {
-                                        res.render('pages/new_sensor', {message: "Sensor already exists and you are not permitted to change it.", text:req.body.text, schema:configSchema});
+                                        //Sensor does not exist yet
+                                        jsonobj.users = [req.user.username];
+                                        db.collection("sensors").insertOne(jsonobj)
+                                            .then(db.collection("users").updateOne({username: req.user.username}, {"$addToSet": {sensors: jsonobj.ID}}))
+                                            .then(() => { 
+                                                res.render('pages/new_sensor', {message: "Sensor creation successful!", text:req.body.text, schema:configSchema});
+                                            })
+                                            .catch(e => console.error("Could not create sensor " + jsonobj.ID + ", cause: " + e.message));
                                     }
-                                } else {
-                                    //Sensor does not exist yet
-                                    jsonobj.users = [req.user.username];
-                                    db.collection("sensors").insertOne(jsonobj)
-                                        .then(db.collection("users").updateOne({username: req.user.username}, {"$addToSet": {sensors: jsonobj.ID}}))
-                                        .then(() => { 
-                                            res.render('pages/new_sensor', {message: "Sensor creation successful!", text:req.body.text, schema:configSchema});
-                                        })
-                                        .catch(e => console.error("Could not create sensor " + jsonobj.ID + ", cause: " + e.message));
-                                }
-                            })
-                            .catch(e => console.error("Could not update sensor " + jsonobj.ID + ", cause: " + e.message));
+                                })
+                                .catch(e => console.error("Could not update sensor " + jsonobj.ID + ", cause: " + e.message));
+                        }
                     } else {
                         message = "Type / version combination invalid!";
                     }
