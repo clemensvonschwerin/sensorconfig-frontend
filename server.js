@@ -138,20 +138,32 @@ db().then(db => {
 
         var getSensorsForUserFcn = async function(user) {
             if(user.role == roles.admin) {
-                return db.collection("sensors").find({}, {fields: {_id: 0}}).toArray();
+                return db.collection("sensors").find({}, {fields: {_id: 0}, sort:"ID"}).toArray();
             }
             console.log("Looking for sensors: " + user.sensors);
-            return db.collection("sensors").find({ID: {"$in": user.sensors}}, {fields: {_id: 0}}).toArray();
+            return db.collection("sensors").find({ID: {"$in": user.sensors}}, {fields: {_id: 0}, sort:"ID"}).toArray();
         }
 
-        var indexfcn = async function(req, res) {
+        var indexfcn = async function(req, res, alertType, alertText) {
             var sensors = await getSensorsForUserFcn(req.user).catch(e => console.error("Could not get sensors, cause: " + e.message));
-            res.render('pages/index', {sensors: sensors, user: req.user, alertType:'', alertText:''});
+            sensors.forEach(s => {
+                s.users.sort();
+            });
+            db.collection("users").find({}, {fields: {username: 1}, sort:"username"}).toArray()
+                .then(userobjs => {
+                    var usernames = userobjs.map(userobj => userobj.username);
+                    res.render('pages/index', {sensors: sensors, user: req.user, usernames: usernames, alertType:'', alertText:''});
+                })
+                .catch(e => console.error("Could not get usernames, cause: " + e.message));
         };
 
-        app.get('/', loginControl.ensureLoggedIn('/login'), indexfcn);
+        app.get('/', loginControl.ensureLoggedIn('/login'), (req, res) => {
+            indexfcn(req, res, '', '');
+        });
 
-        app.get('/index', loginControl.ensureLoggedIn('/login'), indexfcn);
+        app.get('/index', loginControl.ensureLoggedIn('/login'), (req, res) => {
+            indexfcn(req, res, '', '');
+        });
 
         app.post('/index', loginControl.ensureLoggedIn('/login'), async function(req,res) {
             console.log("Got data: " + util.inspect(req.body));
@@ -166,13 +178,11 @@ db().then(db => {
                     node_red_comm.deleteFlowForSensorId(sensor, async function(success) {
                         alertType = success ? 'success':'failure';
                         alertText = '<strong>' + sensor + (success ? ' has been deleted successfully!': ' has dependent flows that could not be deleted. Please do that manually in Node-RED at port 1880!') +'</strong>';
-                        var sensors = await getSensorsForUserFcn(req.user).catch(e => console.error("Could not get sensors, cause: " + e.message));
-                        res.render('pages/index', {sensors: sensors, user: req.user, alertType: alertType, alertText: alertText});
+                        indexfcn(req, res, alertType, alertText);
                     });
                 } catch(e) {
                     console.log("Could not delete sensor with ID " + sensor + ", cause " + e);
-                    var sensors = await getSensorsForUserFcn(req.user).catch(e => console.error("Could not get sensors, cause: " + e.message));
-                    res.render('pages/index', {sensors: sensors, user: req.user, alertType: 'failure', alertText: 'Sensor was not found on the system!'});
+                    indexfcn(req, res, 'failure', 'Sensor was not found on the system!');
                 }
             } else if(sensorAction.endsWith("_edit_btn")) {
                 var text="{}";
@@ -201,13 +211,27 @@ db().then(db => {
                     node_red_comm.deployFlowObject(flowObject, async function (success) {
                         alertType = success ? 'success':'failure';
                         alertText = '<strong>' + sensor + (success ? ' has been deployed successfully!': ' could not be deployed!') +'</strong>';
-                        var sensors = await getSensorsForUserFcn(req.user).catch(e => console.error("Could not get sensors, cause: " + e.message));
-                        res.render('pages/index', {sensors: sensors, user: req.user, alertType: alertType, alertText: alertText});
+                        indexfcn(req, res, alertType, alertText);
                     });
                 }
                 //res.redirect('/index');
             } else {
                 console.log("Error: unkown sensor action!");
+            }
+        });
+
+        app.post('/share_sensor', loginControl.ensureLoggedIn('/login'), async function(req,res) {
+            console.log("Got request body: " + util.inspect(req.body));
+            if(req.user.role == roles.admin || req.user.sensors.includes(req.body.sensorid)) {
+                db.collection("sensors").update({ID: req.body.sensorid}, {"$addToSet": {users: req.body.username}})
+                    .then(() => {
+                        db.collection("users").update({username: req.body.username}, {"$addToSet": {sensors: req.body.sensorid}});
+                        console.log("pushing " + req.body.sensorid + " to " + req.body.username + ".sensors");
+                    })
+                    .then(indexfcn(req, res, 'success', "Setting " + req.body.user + " as owner for " + req.body.sensorid + " was successful!" ))
+                    .catch(e=> indexfcn(req, res, 'success', "Could not set " + req.body.user + " as owner for " + req.body.sensorid + ": " + e.message ));
+            } else {
+                indexfcn(req, res, 'failure', "Operation not permitted!" );
             }
         });
 
@@ -264,7 +288,7 @@ db().then(db => {
                                     //Sensor does not exist yet
                                     jsonobj.users = [req.user.username];
                                     db.collection("sensors").insertOne(jsonobj)
-                                        .then(db.collection("users").updateOne({username: req.user.username}, {"$push": {sensors: jsonobj.ID}}))
+                                        .then(db.collection("users").updateOne({username: req.user.username}, {"$addToSet": {sensors: jsonobj.ID}}))
                                         .then(() => { 
                                             res.render('pages/new_sensor', {message: "Sensor creation successful!", text:req.body.text, schema:configSchema});
                                         })
@@ -430,7 +454,7 @@ db().then(db => {
                 res.render('pages/user_management', {users: testusers, roles: testroles, alertType: ""});
                 */
 
-                db.collection("users").find({}, {_id:0}).toArray().then(users => {
+                db.collection("users").find({}, {fields: {_id:0}, sort:'username'}).toArray().then(users => {
                     var user_alert = {};
                     var add_user_alert = {alertType: "", alertText: ""};
                     var user_alert_string = req.flash('user_alert');

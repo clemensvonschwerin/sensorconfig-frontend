@@ -43,7 +43,7 @@
 		role = role.substr(role.indexOf('<span>') + 6);
 		role = role.substr(0, role.indexOf('</span>'));
 		username = role_elem.replace('#','');
-		username = username.replace('_role_elem', '');
+		username = username.substring(0, username.lastIndexOf('_role_elem'));
 
 		$('#save_role_user').val(username);
 		$('#save_role_role').val(role);
