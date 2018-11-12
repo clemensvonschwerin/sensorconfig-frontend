@@ -152,7 +152,7 @@ db().then(db => {
             db.collection("users").find({}, {fields: {username: 1}, sort:"username"}).toArray()
                 .then(userobjs => {
                     var usernames = userobjs.map(userobj => userobj.username);
-                    res.render('pages/index', {sensors: sensors, user: req.user, usernames: usernames, alertType:'', alertText:''});
+                    res.render('pages/index', {sensors: sensors, user: req.user, usernames: usernames, alertType:alertType, alertText:alertText});
                 })
                 .catch(e => console.error("Could not get usernames, cause: " + e.message));
         };
