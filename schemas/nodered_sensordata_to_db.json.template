@@ -98,7 +98,7 @@
         "id": "77e81d55.32e6ec",
         "type": "ttn app",
         "z": "",
-        "appId": "peoplecounter_busstop_ulm_0001",
+        "appId": "",
         "accessKey": "",
         "discovery": "discovery.thethingsnetwork.org:1900"
     },

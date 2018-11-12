@@ -142,7 +142,7 @@ exports.flowObjectFromTemplate = function(sensorobj, configobj) {
             } else if(target[key].type == "ttn uplink") {
                 target[key].dev_id = sensorobj.TTN.DevId;
             } else if(target[key].type == "ttn app") {
-                target[key].appID = sensorobj.TTN.AppId;
+                target[key].appId = sensorobj.TTN.AppId;
                 target[key].accessKey = sensorobj.TTN.AccessKey;
             } else if(target[key].type == "function") {
                 target[key].func = buildconversionfn(sensorobj, configobj);
