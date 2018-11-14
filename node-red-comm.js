@@ -1,17 +1,27 @@
+/**
+ * This module is responsible for communicating with the Node-RED server's rest-API running on
+ * 127.0.0.1:1880. It provides functionality for automatically generating and 
+ * deploying workflows for sensor data integration and storage.
+ */
+
 const http = require('http');
 const url = require('url');
 const fs = require('fs');
 
+// Workflowtemplate
 const templatepath = __dirname + '/schemas/nodered_sensordata_to_db.json.template'; 
+// Config file - read and write
 const cfgpath = __dirname + '/node-red-comm.cfg';
 
-//Increment all ids by 1 so they are unique
+/**
+ * Increment all ids by a fixed number so they are unique. It is assumed, that an id is
+ * 14 or 15 characters long and contains a '.' at position 7 or 8.
+ * @param target workflow object containing the ids to update
+ * @param flownumber the number to increase each id by
+ * @return updated target
+ **/
 var incidfn = function(target, flownumber) {
-    //If target is an id object -> increment
-    /*console.log('Target: ' + target + ', type: ' + typeof(target));
-    if(typeof(target) == 'string') {
-        console.log('Length: ' + target.length + ', pointpos: ' + target.indexOf("."));
-    }*/
+    //If target is an id string -> increment
     if(typeof(target) == "string" && (target.length == 14 || target.length == 15)
         && (target.indexOf(".")  == 7 ||  target.indexOf(".")  == 8)) {
         console.log('Incrementing id ' + target);
@@ -37,6 +47,14 @@ var incidfn = function(target, flownumber) {
     return target;
 }
 
+/**
+ * Build the javascript function to convert the raw message payload 
+ * of a node red message (bytes) to a JSON representation using the
+ * given sensor and configuration objects.
+ * @param sensorobj sensorobject to generate the conversion function for
+ * @param configobj configurationobject for the given sensor 
+ * @return payload conversion function as string
+ */
 var buildconversionfn = function(sensorobj, configobj) {
     var out = `var toArrayBuffer = function (buf) {
         var ab = new ArrayBuffer(buf.length);
@@ -129,6 +147,11 @@ var buildconversionfn = function(sensorobj, configobj) {
     return out;
 }
 
+/**
+ * Generate a node red flow object for a specific sensor using the template file.
+ * @param sensorobj the sensorobject to generate the flow object for
+ * @param configobj the configobject for the given sensor
+ */
 exports.flowObjectFromTemplate = function(sensorobj, configobj) {
     var template = JSON.parse(fs.readFileSync(templatepath));
     var flownumber = parseInt(fs.readFileSync(cfgpath)) + 1;
@@ -158,6 +181,12 @@ exports.flowObjectFromTemplate = function(sensorobj, configobj) {
     return target;
 }
 
+/**
+ * Update an already existing flow to a new version.
+ * @param flowInfo an object containing the 'id' and 'label' of the flow to update
+ * @param flowObject the flow object to update the flow with
+ * @param success_callback processes a boolean indicating update success or failure
+ */
 var updateFlowFn = function(flowInfo, flowObject, success_callback) {
     var entrypoint = '/flow';
     var method = 'POST';
@@ -210,6 +239,11 @@ var updateFlowFn = function(flowInfo, flowObject, success_callback) {
     req.end();
 };
 
+/**
+ * Get a list of all existing flows from the local Node-RED server
+ * and run the given callback on that list of flows.
+ * @param callback a callback processing the list of local Node-RED flows 
+ */
 var runOnExistingFlows = function(callback) {
     //Get existing flows
     const listFlowsOptions = {
@@ -249,6 +283,11 @@ var runOnExistingFlows = function(callback) {
     listFlowsReq.end();
 }
 
+/**
+ * Deploy the given flow object on the local Node-RED server.
+ * @param flowObject the flow object to deploy
+ * @param success_callback processes a boolean indicating deployment success or failure
+ */
 exports.deployFlowObject = function(flowObject, success_callback) {
     
     var flowInfo = null;
@@ -279,6 +318,12 @@ exports.deployFlowObject = function(flowObject, success_callback) {
     });
 }
 
+/**
+ * Delete the node red flow for a given sensor.
+ * @param sensorid the id of the sensor whos flow should be deleted
+ * @param success_callback processes a boolean indicating deletion success or failure
+ *                          (also true if flow was not present)
+ */
 exports.deleteFlowForSensorId = function(sensorid, success_callback) {
     runOnExistingFlows((flows) => {
         var id = null;

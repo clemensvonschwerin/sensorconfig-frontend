@@ -1,0 +1,22 @@
+{
+	"$schema": "http://json-schema.org/draft-06/schema#", 
+	"type": "object",
+	"properties": {
+	"username": {
+		"type": "string"
+	},
+	"passwordHash": {
+		"type": "string"
+	},
+	"role": {
+		"type": "string",
+		"pattern": "^(admin|standarduser)$"
+	},
+	"sensors": {
+		"type": "array",
+		"items": {
+		  "type": "string"
+		}
+	},
+	"required": ["username", "passwordHash", "role", "sensors"]
+}

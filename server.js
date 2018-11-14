@@ -1,3 +1,17 @@
+/**
+ * Webserver for the sensorconfiguration. Uses a mongodb instance for 
+ * storing users, sensors and configurations. Uses express.js for 
+ * routing and passport.js with client-sessions for authentication.
+ * 
+ * DB layout (required fields without _id):
+ * collection user: indexed on username, schema: schemas/user_schema.json
+ * collection sensor: indexed on ID, schema: schemas/sensor_schema.json 
+ *      + additional "users" array containing usernames
+ * collection config: indexed on (type, version) combination,
+ *                    schema: schemas/config_schema.json
+ * collection secrets: "key" / "value" pairs
+ */
+
 const http = require('http');
 const url = require('url');
 const fs = require('fs');
@@ -15,17 +29,18 @@ const bcrypt = require('bcrypt');
 const loginControl = require('connect-ensure-login');
 const flash = require('connect-flash');
 
+var JSONSchemaValidator = require('jsonschema').Validator;
+
 const app = express();
 
 const hostname = '0.0.0.0';
 const port = 3033;
 
-const cfgpath = '/home/kuchen/sensors/configs/';
-const sensorpath = '/home/kuchen/sensors/users/';
-
-var JSONSchemaValidator = require('jsonschema').Validator;
-
-//From: https://stackoverflow.com/questions/4597900/checking-something-isempty-in-javascript
+/**
+ * From: https://stackoverflow.com/questions/4597900/checking-something-isempty-in-javascript
+ * Check if the given value is empty.
+ * @param value an arbitray value
+ **/
 function isEmpty(value) {
     var isEmptyObject = function(a) {
       if (typeof a.length === 'undefined') { // it's an Object, not an Array
@@ -47,23 +62,36 @@ function isEmpty(value) {
     );
   }
 
+// Existing roles for users
 const roles = {admin: "admin", standarduser: "standarduser"};
 
+//URL to local mongo running on port 27017
 const dburl = 'mongodb://127.0.0.1:27017/sensorconfigdb';
+const dbname = 'sensorconfigdb';
 var dbrep = undefined;
 
+/**
+ * Connects to the database if not already connected.
+ * @return the database connection
+ */
 async function db() {
     if(dbrep == undefined) {
         var client = await MongoClient.connect(dburl).catch(e => console.error("Could not connect to MongoDB at " + dburl + ", cause: " + e.message));
-        dbrep = client.db('sensorconfigdb');
+        dbrep = client.db(dbname);
         console.log("Using database " + dbrep);
     }
     return dbrep;
 }
 
+//First establish a database connection
 db().then(db => {
 
     var session_secret_rep;
+
+    /**
+     * Get the session secret from the database if it is not available yet.
+     * @return the session secret string
+     */
     async function session_secret() {
         if(session_secret_rep == undefined) {
             var keyobj = await db.collection('secrets').findOne({key: 'session_key'})
@@ -77,24 +105,34 @@ db().then(db => {
     //Configure passport
     passport.use(new Strategy(
         function(username, password, callback) {
-            //console.log("Got user: " + username + ", pw: " + password);
+            //Find a user with username in the db, check the password and allow or deny authentication request
             db.collection("users").findOne({username: username}, function(err, user) {
                 console.log("Got user: " + util.inspect(user));
+                //Error during db query
                 if(err) { console.error("Error during authentication: " + err); return callback(err); }
+                //User does not exist
                 if(!user) { console.log("Incorrect username"); return callback(null, false, {message: 'Incorrect username.'}); }
+                //Password does not match
                 if(!bcrypt.compareSync(password, user.passwordHash)) {
                     console.log("Incorrect password");
                     return callback(null, false, {message: 'Incorrect password.'});
                 }
+                //Everything okay
                 return callback(null, user);
             });
         }
     ));
 
+    /**
+     * Passport helper for providing user object in req parameter for express routes.
+     */
     passport.serializeUser(function(user, callback) {
         callback(null, user.username);
     });
 
+    /**
+     * Passport helper for providing user object in req parameter for express routes.
+     */
     passport.deserializeUser(function(username, cb) {
         db.collection("users").findOne({username: username}, function(err, user) {
             if(err) { console.error("Cannot deserialize user: " + err.message); return cb(err); }
@@ -107,27 +145,27 @@ db().then(db => {
     app.use(body_parser.json());
 
     app.use(require('cookie-parser')());
-    session_secret()
-        .then(session_secret => {
-            app.use(require('express-session')({ secret: session_secret, resave:false, saveUninitialized: false }));
-            app.use(flash());
-            app.use(passport.initialize());
-            app.use(passport.session());
 
-        // app.use(session({
-        //     cookieName: 'session',
-        //     secret: '',
-        //     duration: 1000 * 3600 * 48,
-        //     activeDuration: 1000 * 3600 * 24,
-        // }));
+    //Ensure session secret is loaded
+    session_secret().then( session_secret => 
+    {
+        //Session for storing user information
+        app.use(require('express-session')({ 
+            secret: session_secret, 
+            resave: false, 
+            saveUninitialized: false 
+        }));
+        //Flash for passing messages on redirects
+        app.use(flash());
+        app.use(passport.initialize());
+        app.use(passport.session());
 
+        //Make paths on filesystem available in express
         app.use('/vendor', express.static(__dirname + '/vendor'));
         app.use('/img', express.static(__dirname + '/img'));
         app.use('/schemas', express.static(__dirname + '/schemas'));
-        // app.use('/css', express.static(__dirname + '/css'));
-        // app.use('/js', express.static(__dirname + '/js'));
-        // app.use('/scss', express.static(__dirname + '/scss'));
 
+        //Use ejs view engine to render pages
         app.set('view engine', 'ejs');
 
         /* Init all variables to default value */
@@ -136,6 +174,10 @@ db().then(db => {
             next();
         });
 
+        /**
+         * Request a list of all sensorobjects the given user is allowed to see / manage.
+         * @param user a userobject  
+         */
         var getSensorsForUserFcn = async function(user) {
             if(user.role == roles.admin) {
                 return db.collection("sensors").find({}, {fields: {_id: 0}, sort:"ID"}).toArray();
@@ -144,6 +186,13 @@ db().then(db => {
             return db.collection("sensors").find({ID: {"$in": user.sensors}}, {fields: {_id: 0}, sort:"ID"}).toArray();
         }
 
+        /**
+         * Render mainpage function
+         * @param req 
+         * @param res 
+         * @param alertType "success", "failure" or ""
+         * @param alertText message to display
+         */
         var indexfcn = async function(req, res, alertType, alertText) {
             var sensors = await getSensorsForUserFcn(req.user).catch(e => console.error("Could not get sensors, cause: " + e.message));
             sensors.forEach(s => {
@@ -157,22 +206,27 @@ db().then(db => {
                 .catch(e => console.error("Could not get usernames, cause: " + e.message));
         };
 
+        // default route
         app.get('/', loginControl.ensureLoggedIn('/login'), (req, res) => {
             indexfcn(req, res, '', '');
         });
-
+        // '/index' route
         app.get('/index', loginControl.ensureLoggedIn('/login'), (req, res) => {
             indexfcn(req, res, '', '');
         });
 
+        // '/index' post
+        // expected request body: {'any_form_control_name': 'any text'}
+        // 'any_from_control_name' should end with '_delete_btn', '_edit_btn' or '_deploy_btn'
         app.post('/index', loginControl.ensureLoggedIn('/login'), async function(req,res) {
             console.log("Got data: " + util.inspect(req.body));
             sensorAction = Object.keys(req.body)[0];
             if(sensorAction.endsWith("_delete_btn")) {
-                //delete action
+                // Delete action requested 
                 console.log("Deleting: " + sensorAction.replace("_delete_btn", ""));
                 sensor = sensorAction.replace("_delete_btn", "");
                 if(req.user.role == roles.admin || req.user.sensors.includes(sensor)) {
+                    // Cascading deletion: remove sensorid from every user.sensor, then delete sensor from sensors collection
                     db.collection("sensors").findOne({ID: sensor})
                         .then(sensorobj => {
                             db.collection("users").updateMany({username: {"$in": sensorobj.users}}, {"$pull": {sensors: sensor}})
@@ -193,10 +247,11 @@ db().then(db => {
                     indexfcn(req, res, 'failure', 'Operation not permitted!');
                 }
             } else if(sensorAction.endsWith("_edit_btn")) {
+                //Edit action requested
                 var text="{}";
-                //edit action
                 sensor = sensorAction.replace("_edit_btn", "");
                 
+                //Get sensor object from db, convert it to text and pass it to the /new_sensor page
                 db.collection("sensors").findOne({ID: sensor}, {fields: {_id: 0, users: 0}})
                     .then(sensorobj => {
                         var configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
@@ -210,8 +265,9 @@ db().then(db => {
                         res.redirect('/index');
                     });
             } else if(sensorAction.endsWith("_deploy_btn")) {
-                //edit action
+                //Deploy action requested
                 sensor = sensorAction.replace("_deploy_btn", "");
+                //Get sensor and config from db, generate a node red flow and deploy it via Node-RED's rest-API
                 var sensorobj = await db.collection("sensors").findOne({ID: sensor}, {fields: {_id: 0, users: 0}})
                     .catch(e => console.error('Could not find ' + sensor + ' in sensors, cause ' + e.message));
                 if(sensorobj != undefined) { 
@@ -219,21 +275,19 @@ db().then(db => {
                         .catch(e => console.error('Could not find config for type: ' + sensorobj.type 
                         + ', version: ' + sensorobj.version  + ' in configs, cause ' + e.message));
                     flowObject = node_red_comm.flowObjectFromTemplate(sensorobj, configobj);
-                    // console.log('\n\n');
-                    // console.log(JSON.stringify(flowObject, null, 2));
-                    // console.log('\n\n');
                     node_red_comm.deployFlowObject(flowObject, async function (success) {
                         alertType = success ? 'success':'failure';
                         alertText = '<strong>' + sensor + (success ? ' has been deployed successfully!': ' could not be deployed!') +'</strong>';
                         indexfcn(req, res, alertType, alertText);
                     });
                 }
-                //res.redirect('/index');
             } else {
                 console.log("Error: unkown sensor action!");
             }
         });
 
+        // 'share_sensor' post (from '/index')
+        // expected request body: {sensorid: "a sensor's id (string)", username: "the username for the user to share with (string)"}
         app.post('/share_sensor', loginControl.ensureLoggedIn('/login'), async function(req,res) {
             console.log("Got request body: " + util.inspect(req.body));
             if(req.user.role == roles.admin || req.user.sensors.includes(req.body.sensorid)) {
@@ -249,6 +303,7 @@ db().then(db => {
             }
         });
 
+        // '/login' route
         app.get('/login', function(req,res) {
             var message = '';
             if(req.flash.message != undefined) {
@@ -257,29 +312,35 @@ db().then(db => {
             res.render('pages/login', {message: message});
         });
 
+        // '/login' post, validation / authentication via passport
         app.post('/login', passport.authenticate('local', { successRedirect: '/', failureRedirect: '/login', failureFlash: true }));
 
+        // '/logout' route, logout current user
         app.get('/logout', function(req, res){
             req.logout();
             res.redirect('/login');
         });
 
+        // 'new_sensor' route
         app.get('/new_sensor', loginControl.ensureLoggedIn('/login'), function(req, res) {
             var configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
             res.render('pages/new_sensor', {message:"", text:"{}", schema:configSchema});
         });
 
+        // '/new_sensor' post, 
+        // expected request body: {text: "stringified JSON sensor representation"}
         app.post('/new_sensor', loginControl.ensureLoggedIn('/login'), async function(req, res) {
             console.log("Got data: " + util.inspect(req.body));
             var message = "";
             var sensor_valid = false;
             var configSchema = '';
             try {
+                // Parse passed text into JSON object 
                 jsonobj = JSON.parse(req.body.text);
                 var validator = new JSONSchemaValidator();
                 configSchema = fs.readFileSync(__dirname + '/schemas/sensor_schema.json');
                 configSchemaJson = JSON.parse(configSchema);
-                //validate
+                // Validate using jsonschema 
                 var result = validator.validate(jsonobj, configSchemaJson);
                 console.log(result);
                 if (result.errors.length == 0) {
@@ -291,13 +352,14 @@ db().then(db => {
                         if(jsonobj.ID.indexOf(' ') > 0) {
                             message = "No spaces allowed in ID field!";
                         } else {
+                            //Sensor is valid -> write sensor to db, update current user
                             sensor_valid = true;
                             db.collection("sensors").findOne({ID: jsonobj.ID})
                                 .then(result => {
                                     if(!isEmpty(result))  {
                                         //Sensor already exists
                                         if(req.user.role == roles.admin || result.users.includes(req.user.username)) {
-                                            //user is allowed to write
+                                            //user is allowed to write -> update
                                             db.collection("sensors").updateOne({ID: jsonobj.ID}, {"$set": jsonobj}, {upsert: 1})
                                                 .then(() => {
                                                     res.render('pages/new_sensor', {message: "Sensor update successful!", text:req.body.text, schema:configSchema});
@@ -307,7 +369,7 @@ db().then(db => {
                                             res.render('pages/new_sensor', {message: "Sensor already exists and you are not permitted to change it.", text:req.body.text, schema:configSchema});
                                         }
                                     } else {
-                                        //Sensor does not exist yet
+                                        //Sensor does not exist yet -> insert
                                         jsonobj.users = [req.user.username];
                                         db.collection("sensors").insertOne(jsonobj)
                                             .then(db.collection("users").updateOne({username: req.user.username}, {"$addToSet": {sensors: jsonobj.ID}}))
@@ -333,6 +395,13 @@ db().then(db => {
             }
         });
 
+        /**
+         * List all stored configuration object's type and version.
+         * @return Promise({type: "first type to show in dropdown", 
+         *              version: "first version to show in dropdown",
+         *              objects: {"a type": ["version 1", ... , "version n"]} 
+         *          })
+         */
         var listcfgsfun = async function() {
             var cfgs = {};
             var type = "";
@@ -367,6 +436,7 @@ db().then(db => {
             
         };
 
+        // '/new_config' route
         app.get('/new_config', loginControl.ensureLoggedIn('/login'), async function(req, res) {
             var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json');
             var cfgs = await listcfgsfun();
@@ -374,16 +444,19 @@ db().then(db => {
             res.render('pages/new_configuration', {message:"", text:"{}", cfgs: cfgs, schema:configSchema});
         });
 
+        // 'new_config' post,
+        // expected request body: {text: "stringified JSON configuration representation"}
         app.post('/new_config', loginControl.ensureLoggedIn('/login'), async function(req, res) {
-            // Post request is used for saving / replacing -> expects res.render() call
+            // Post request is used for saving config to db -> expects res.render() call
             console.log("Got data: " + util.inspect(req.body));
             var cfg_valid = false;
-            var configSchemaPretty = '';
             try {
+                // Parse passed text into JSON object 
                 jsonobj = JSON.parse(req.body.text);
                 var validator = new JSONSchemaValidator();
                 var configSchema = fs.readFileSync(__dirname + '/schemas/config_schema.json');
                 var configSchemaJson = JSON.parse(configSchema);
+                // Validate using jsonschema
                 var result = validator.validate(jsonobj, configSchemaJson);
                 if (result.errors.length == 0) {
                     //Custom validation steps
@@ -394,6 +467,7 @@ db().then(db => {
                         message = "Error: time.field and time.format are required when using time.from=\"field\"!";
                     } else {
                         dt_valid = true;
+                        //Further custom validation for configobj.fields
                         for(i=0; i<jsonobj.fields.length; i++) {
                             if(jsonobj.fields[i].type in ['int', 'uint'] && !jsonobj.fields[i].length_bytes in [1,2,4]) {
                                 message = "Error: integer types can only be 1,2 or 4 bytes long!";
@@ -406,10 +480,9 @@ db().then(db => {
                             }
                         }
                         if(dt_valid) {
-
+                            //Configuration is valid -> insert config into db
                             message = "";
                             cfg_valid = true;
-                            var typepath = cfgpath + req.body.type + "/";
                             console.log("Config is valid, prepare inserting!");
                             jsonobj.type = req.body.type;
                             jsonobj.version = req.body.version;
@@ -447,6 +520,8 @@ db().then(db => {
             }
         });
 
+        // '/new_config' put,
+        // expected request body: {type: "a type", version: "a version"}
         app.put('/new_config', loginControl.ensureLoggedIn('/login'), async function(req, res) {
             // Put request is used for requesting json description for type / version combination
             // -> expects res.send() call
@@ -466,16 +541,14 @@ db().then(db => {
                 });
         });
 
+        // '/user_management' route
+        // - List all users and allow: change of roles, generation of new passowrd, deletion
+        // - Display form to add new user
         app.get('/user_management', loginControl.ensureLoggedIn('/login'), async function(req, res) {
             console.log("Calling user: " + util.inspect(req.user));
             if(req.user.role != "admin") {
                 res.redirect('/');
             } else {
-                /*
-                var testusers = [{username: "test", passwordHash:"123", role:"standarduser", sensors:["testsensor1", "testsensor_2_"], alertType:"success", alertText:"New password is 123"}];
-                var testroles = ["admin", "standarduser"]
-                res.render('pages/user_management', {users: testusers, roles: testroles, alertType: ""});
-                */
 
                 db.collection("users").find({}, {fields: {_id:0}, sort:'username'}).toArray().then(users => {
                     var user_alert = {};
@@ -490,6 +563,7 @@ db().then(db => {
                         add_user_alert = JSON.parse(add_user_alert_string);
                     }
                     
+                    // Set user alert if there is a matching one, otherwise empty string
                     for(i=0; i<users.length; i++) {
                         if(user_alert && user_alert.username == users[i].username) {
                             users[i].alertType = user_alert.alertType;
@@ -510,13 +584,8 @@ db().then(db => {
             }
         });
 
-        app.post('/user_mangement', loginControl.ensureLoggedIn('/login'), async function(req, res) {
-            if(req.user.role != "admin") {
-                res.redirect('/');
-            } else {
-            }
-        });
-
+        // '/new_user' post (from '/user_management'),
+        // expected request body: {username_edit: "a username", password_edit: "a new password"}
         app.post('/new_user', loginControl.ensureLoggedIn('/login'), async function(req, res) {
             if(req.user.role != "admin") {
                 res.redirect('/');
@@ -544,13 +613,16 @@ db().then(db => {
             }
         });
 
+        // '/save_role' post (from '/user_management'),
+        // expected request body: {username: "a username", role: "a role"}
         app.post('/save_role', loginControl.ensureLoggedIn('/login'), async function(req, res) {
             if(req.user.role != roles.admin) {
                 res.redirect('/');
             } else {
                 console.log("Save role: Got request body: " + util.inspect(req.body));
+                // Prevent adimin from demoting the last admin to standarduser
                 db.collection("users").findOne({username: req.body.username}).then(dbuser => {
-                    //Check if there is still an admin after demotion
+                    //Check if the current user is an admin and wants to demote a user
                     console.log(dbuser.role + ", " + req.body.role + ", " + (dbuser.role == roles.admin) + ", " + (req.body.role != roles.admin));
                     if(dbuser.role == roles.admin && req.body.role != roles.admin) {
                         db.collection("users").findOne({role: roles.admin, username: {"$ne": dbuser.username}}).then(otherAdmin => {
@@ -580,6 +652,8 @@ db().then(db => {
             }
         });
 
+        // '/set_password' post (from '/user_management'),
+        // expected request body: {username: "a username", password: "a password"}
         app.post('/set_password', loginControl.ensureLoggedIn('/login'), async function(req, res) {
             if(req.user.role != roles.admin) {
                 res.redirect('/');
@@ -593,9 +667,12 @@ db().then(db => {
             }
         });
 
+        // '/delete_user' post (from '/user_management'),
+        // expected request body: {username: "a username"}
         app.post('/delete_user', loginControl.ensureLoggedIn('/login'), async function(req, res) {
             console.log("/delete_user: got request body: " + util.inspect(req.body));
             if(req.user.role == roles.admin && req.user.username != req.body.username) {
+                //Cascading delete: remove user from all of its sensors, then delete userobject
                 db.collection("users").findOne({username: req.body.username})
                     .then(userobj => {
                         db.collection("sensors").updateMany({ID: {"$in": userobj.sensors}}, {"$pull": {users: req.body.username}})
@@ -616,10 +693,12 @@ db().then(db => {
             }
         });
 
+        //Page not found
         app.get('*', function(req, res) {
             res.render('pages/404');
         });
 
+        //Start server
         app.listen(port, async function(){
             console.log("Server started at port " + port);
         });
