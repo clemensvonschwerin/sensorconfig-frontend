@@ -27,6 +27,14 @@
 			},
 			"required": ["AppId", "DevId", "AccessKey"]
 		},
+		"ip": {
+			"type": "string"
+		},
+		"cryptokey": {
+			"type": "string",
+			"minLength": 16,
+			"maxLength": 16
+		},
 		"type": {
 			"type": "string",
 			"required": true
@@ -39,5 +47,5 @@
 			"type": "object"
 		}
 	},
-	"required": ["ID", "TTN", "type", "version"]
+	"required": ["ID", "TTN", "ip", "cryptokey", "type", "version"]
 }
